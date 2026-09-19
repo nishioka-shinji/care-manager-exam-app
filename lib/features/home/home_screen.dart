@@ -231,7 +231,7 @@ class _ResumeCard extends StatelessWidget {
     final theme = Theme.of(context);
     final total = current.questionNos.length;
     final cursorNo = current.cursor + 1;
-    final modeLabel = current.mode == QuizMode.review ? '復習' : '本番通し';
+    final label = modeLabel(current.mode);
 
     return AppCard(
       child: Column(
@@ -240,7 +240,7 @@ class _ResumeCard extends StatelessWidget {
           Text('前回の続きがあります', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           Text(
-            '$modeLabel・$cursorNo / $total 問目まで進行中',
+            '$label・$cursorNo / $total 問目まで進行中',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 8),
@@ -393,7 +393,7 @@ class _HistoryItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dateText = _formatDateTime(session.finishedAt);
-    final modeLabel = session.mode == QuizMode.review ? '復習' : '本番通し';
+    final label = modeLabel(session.mode);
     final score = session.score;
     final sectionTexts = score.bySection.entries
         .map((entry) {
@@ -412,7 +412,7 @@ class _HistoryItem extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '$dateText・$modeLabel',
+              '$dateText・$label',
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),

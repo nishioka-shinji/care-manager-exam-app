@@ -349,7 +349,7 @@ class StorageRepository {
     if (!_isPlainMap(value)) return false;
     final map = value as Map<String, dynamic>;
     return map['examId'] is String &&
-        (map['mode'] == 'full' || map['mode'] == 'review') &&
+        QuizMode.values.any((mode) => mode.name == map['mode']) &&
         map['startedAt'] is String &&
         map['questionNos'] is List &&
         map['cursor'] is int &&

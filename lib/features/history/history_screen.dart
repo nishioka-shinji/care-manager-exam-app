@@ -251,7 +251,7 @@ class _HistoryItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dateText = _formatDateTime(session.finishedAt);
-    final modeLabel = session.mode == QuizMode.review ? '復習' : '本番通し';
+    final label = modeLabel(session.mode);
     final score = session.score;
     final sectionTexts = score.bySection.entries
         .map((entry) {
@@ -279,7 +279,7 @@ class _HistoryItem extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    modeLabel,
+                    label,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: context.appTokens.muted,
                     ),

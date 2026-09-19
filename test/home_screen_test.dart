@@ -208,6 +208,25 @@ void main() {
     expect(find.textContaining('前回の続きから再開（5 / 60 問目）'), findsOneWidget);
   });
 
+  testWidgets('中断セッションが一問一答モードだと再開カードに「一問一答」と出る', (tester) async {
+    final controller = await _buildController(
+      tester,
+      current: CurrentSession(
+        examId: _examId,
+        mode: QuizMode.drill,
+        startedAt: '2026-09-19T00:00:00.000Z',
+        questionNos: List.generate(60, (i) => i + 1),
+        cursor: 4,
+        answers: const {},
+      ),
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('一問一答・5 / 60 問目まで進行中'), findsOneWidget);
+    expect(find.textContaining('本番通し・5 / 60 問目まで進行中'), findsNothing);
+  });
+
   testWidgets('やめて最初からで確認シートが出て OK で current が消える', (tester) async {
     final controller = await _buildController(
       tester,
@@ -399,6 +418,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('result:s1'), findsOneWidget);
+  });
+
+  testWidgets('直近履歴に一問一答モードのセッションがあると「一問一答」と出る', (tester) async {
+    final sessions = [
+      _buildSession(
+        id: 's1',
+        finishedAt: '2026-09-19T04:00:00.000Z',
+        mode: QuizMode.drill,
+      ),
+    ];
+    final controller = await _buildController(tester, sessions: sessions);
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('一問一答'), findsOneWidget);
+    expect(find.text('本番通し'), findsNothing);
   });
 
   testWidgets('年度カードにタイトル・全問数・出典が表示される', (tester) async {

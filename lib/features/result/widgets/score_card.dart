@@ -4,9 +4,6 @@ import '../../../core/models/session.dart';
 import '../../../theme/app_tokens.dart';
 import '../../../widgets/app_card.dart';
 
-/// モードの表示ラベル。移植元 result.js の modeLabel と同じ。
-String modeLabel(QuizMode mode) => mode == QuizMode.review ? '復習' : '本番通し';
-
 /// ISO 文字列をローカル日時表記に整形する。壊れていれば元の値をそのまま返す。
 /// 移植元 result.js の formatDateTime と同じ規則。
 String formatDateTime(String iso) {

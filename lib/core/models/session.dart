@@ -1,7 +1,8 @@
-/// 出題モード。JSON 上は 'full'（本番通し） / 'review'（復習）の文字列。
+/// 出題モード。JSON 上は 'full'（本番通し） / 'review'（復習） / 'drill'（一問一答）の文字列。
 enum QuizMode {
   full,
-  review;
+  review,
+  drill;
 
   String toJson() => name;
 
@@ -12,6 +13,13 @@ enum QuizMode {
     );
   }
 }
+
+/// モードの表示ラベル。移植元 result.js / home.js / history.js の MODE_LABELS と同じ。
+String modeLabel(QuizMode mode) => switch (mode) {
+  QuizMode.full => '本番通し',
+  QuizMode.review => '復習',
+  QuizMode.drill => '一問一答',
+};
 
 /// 分野別の得点。[correct] / [count] の組。
 class SectionScore {

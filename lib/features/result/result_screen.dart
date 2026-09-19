@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/models/session.dart';
 import '../../routes.dart';
 import '../../data/exam_repository.dart';
 import '../../data/storage_repository.dart';

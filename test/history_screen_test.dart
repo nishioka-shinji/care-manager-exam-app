@@ -406,6 +406,22 @@ void main() {
     expect(find.text('本番通し'), findsNothing);
   });
 
+  testWidgets('一問一答モードのセッションは「一問一答」と表示される', (tester) async {
+    final sessions = [
+      _buildSession(
+        id: 's1',
+        finishedAt: '2026-09-19T04:00:00.000Z',
+        mode: QuizMode.drill,
+      ),
+    ];
+    final controller = await _buildController(tester, sessions: sessions);
+    await tester.pumpWidget(_wrap(HistoryScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('一問一答'), findsOneWidget);
+    expect(find.text('本番通し'), findsNothing);
+  });
+
   testWidgets('受験日時が finishedAt から期待どおりの書式で出る', (tester) async {
     final sessions = [
       _buildSession(id: 's1', finishedAt: '2026-09-19T04:05:00.000Z'),

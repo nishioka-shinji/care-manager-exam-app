@@ -56,6 +56,13 @@ void main() {
     });
   });
 
+  group('QuizMode', () {
+    test('drill を含む全モードが name で往復する', () {
+      expect(QuizMode.fromJson('drill'), QuizMode.drill);
+      expect(QuizMode.drill.toJson(), 'drill');
+    });
+  });
+
   group('モデルの toJson/fromJson 往復', () {
     test('Session: answers の int キーが保たれる', () {
       final session = Session(

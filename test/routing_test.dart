@@ -85,7 +85,7 @@ void main() {
 
     navigator.pushNamed(Routes.history);
     await tester.pumpAndSettle();
-    expect(find.text('履歴 画面（プレースホルダ）'), findsOneWidget);
+    expect(find.text('受験履歴'), findsOneWidget);
 
     navigator.pop();
     await tester.pumpAndSettle();

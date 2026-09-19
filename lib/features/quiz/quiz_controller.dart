@@ -242,7 +242,7 @@ class QuizController extends ChangeNotifier {
     );
 
     await storageRepository.saveSession(session);
-    await storageRepository.applyResults([
+    await storageRepository.applyResults(current.examId, [
       for (final r in result.results) (no: r.no, correct: r.correct),
     ]);
     await storageRepository.clearCurrent();

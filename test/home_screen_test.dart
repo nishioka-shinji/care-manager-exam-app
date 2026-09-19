@@ -143,7 +143,7 @@ Future<HomeController> _buildController(
       await storage.saveSession(session);
     }
     if (statResults.isNotEmpty) {
-      await storage.applyResults([
+      await storage.applyResults(_examId, [
         for (final entry in statResults.entries)
           (no: entry.key, correct: entry.value),
       ]);
@@ -475,7 +475,7 @@ void main() {
       await storage.saveSession(
         _buildSession(id: 's1', finishedAt: '2026-09-19T04:00:00.000Z'),
       );
-      await storage.applyResults([(no: 5, correct: false)]);
+      await storage.applyResults(_examId, [(no: 5, correct: false)]);
     });
 
     navigator.pushNamed('/quiz');

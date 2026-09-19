@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'features/home/home_screen.dart';
 import 'features/quiz/quiz_screen.dart';
 import 'routes.dart';
 import 'theme/app_theme.dart';
@@ -30,7 +31,7 @@ class App extends StatelessWidget {
           themeMode: ThemeMode.system,
           onGenerateRoute: _onGenerateRoute,
           builder: (context, child) =>
-              _AppShell(child: child ?? const SizedBox.shrink()),
+              AppShell(child: child ?? const SizedBox.shrink()),
         );
       },
     );
@@ -58,7 +59,7 @@ class App extends StatelessWidget {
       default:
         return MaterialPageRoute(
           settings: settings,
-          builder: (_) => const HomePlaceholderScreen(),
+          builder: (_) => const HomeScreen(),
         );
     }
   }
@@ -71,23 +72,14 @@ class App extends StatelessWidget {
 /// Navigator（= child）を Column 等で圧縮すると、配下の Scaffold/MediaQuery.size が
 /// 画面全体より縮んでしまい、Navigator が持つ Overlay（ConfirmSheet/AppToast の
 /// 表示先）も画面下端まで届かなくなる。そのため child をそのまま画面全体に渡す。
-class _AppShell extends StatelessWidget {
-  const _AppShell({required this.child});
+class AppShell extends StatelessWidget {
+  const AppShell({super.key, required this.child});
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return CenteredBody(child: child);
-  }
-}
-
-class HomePlaceholderScreen extends StatelessWidget {
-  const HomePlaceholderScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const _PlaceholderScreen(title: 'ホーム', route: Routes.home);
   }
 }
 
@@ -138,21 +130,10 @@ class _PlaceholderScreen extends StatelessWidget {
           Text('$title 画面（プレースホルダ）'),
           if (subtitle != null) Text(subtitle!),
           const SizedBox(height: 16),
-          if (route != Routes.home)
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('戻る'),
-            ),
-          if (route == Routes.home) ...[
-            TextButton(
-              onPressed: () => Navigator.of(context).pushNamed(Routes.quiz),
-              child: const Text('演習へ'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pushNamed(Routes.history),
-              child: const Text('履歴へ'),
-            ),
-          ],
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('戻る'),
+          ),
           const FooterCredit(),
         ],
       ),

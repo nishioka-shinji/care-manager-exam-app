@@ -9,6 +9,7 @@ import 'package:care_manager_exam_app/data/exam_repository.dart';
 import 'package:care_manager_exam_app/data/storage_repository.dart';
 import 'package:care_manager_exam_app/features/home/home_controller.dart';
 import 'package:care_manager_exam_app/features/home/home_screen.dart';
+import 'package:care_manager_exam_app/routes.dart';
 import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:care_manager_exam_app/widgets/app_button.dart';
 import 'package:flutter/material.dart';
@@ -103,6 +104,23 @@ Session _buildSession({
   );
 }
 
+/// load() の呼び出し回数を数えるためのテスト用サブクラス。
+/// 初回ロードの二重実行や、didPopNext での再読み込み回数を検証する。
+class _CountingHomeController extends HomeController {
+  _CountingHomeController({
+    required super.examRepository,
+    required super.storageRepository,
+  });
+
+  int loadCallCount = 0;
+
+  @override
+  Future<void> load() async {
+    loadCallCount += 1;
+    await super.load();
+  }
+}
+
 Future<HomeController> _buildController(
   WidgetTester tester, {
   ExamRepository? examRepository,
@@ -136,10 +154,13 @@ Future<HomeController> _buildController(
 }
 
 // go_router 等は使わない方針のため素の Navigator + onGenerateRoute で組む。
+// routeObserver も本番と同じく登録し、didPopNext の再読み込みを検証できる
+// ようにする（app.dart の navigatorObservers と同じ設定）。
 Widget _wrap(Widget child) {
   return MaterialApp(
     theme: AppTheme.light,
     initialRoute: '/',
+    navigatorObservers: [routeObserver],
     onGenerateRoute: (settings) {
       if (settings.name == '/') {
         return MaterialPageRoute(builder: (_) => child);
@@ -366,5 +387,61 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('この端末では学習記録が保存されません'), findsNothing);
+  });
+
+  testWidgets('初回表示では load() が1回しか走らない', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final storage = StorageRepository();
+    final controller = _CountingHomeController(
+      examRepository: _singleExamRepository(),
+      storageRepository: storage,
+    );
+    await tester.runAsync(() => storage.init());
+
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(controller.loadCallCount, 1);
+  });
+
+  testWidgets('他画面から popUntil/pop でホームへ戻ると再読み込みされ、'
+      '直近履歴・復習件数が最新になる（RouteAware の didPopNext）', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final storage = StorageRepository();
+    final controller = _CountingHomeController(
+      examRepository: _singleExamRepository(),
+      storageRepository: storage,
+    );
+    await tester.runAsync(() => storage.init());
+
+    // initState が controller.load() を呼ぶため、ここでは事前ロードしない。
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+    expect(controller.loadCallCount, 1);
+    expect(find.textContaining('まだ受験履歴がありません'), findsOneWidget);
+    expect(find.text('間違えた問題を復習（0問）'), findsOneWidget);
+
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
+    );
+
+    // 画面裏で受験が完了し、履歴と誤答記録が増えた状態を模す
+    // （演習→結果→ホームへの経路と同じデータ変化）。
+    await tester.runAsync(() async {
+      await storage.saveSession(
+        _buildSession(id: 's1', finishedAt: '2026-09-19T04:00:00.000Z'),
+      );
+      await storage.applyResults([(no: 5, correct: false)]);
+    });
+
+    navigator.pushNamed('/quiz');
+    await tester.pumpAndSettle();
+    navigator.popUntil((route) => route.isFirst);
+    await tester.pumpAndSettle();
+
+    expect(controller.loadCallCount, 2);
+    expect(find.textContaining('まだ受験履歴がありません'), findsNothing);
+    expect(find.textContaining('18 / 25'), findsOneWidget);
+    expect(find.text('間違えた問題を復習（1問）'), findsOneWidget);
   });
 }

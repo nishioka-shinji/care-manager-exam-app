@@ -27,7 +27,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with RouteAware {
   late final HomeController _controller;
 
   @override
@@ -43,12 +43,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute<dynamic>) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     // 注入されたコントローラはテスト側が所有するため、生成した場合のみ破棄する。
     if (widget.controller == null) {
       _controller.dispose();
     }
     super.dispose();
+  }
+
+  // 演習・結果・履歴から popUntil/pop でホームへ戻ったとき、State が
+  // 再利用され initState の load() は再実行されないため、ここで拾い直す
+  // （移植元はハッシュ遷移のたびに renderHome を呼び直す。routes.dart 参照）。
+  @override
+  void didPopNext() {
+    _controller.load();
   }
 
   Future<void> _discardCurrent() async {

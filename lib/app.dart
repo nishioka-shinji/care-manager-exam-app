@@ -30,6 +30,7 @@ class App extends StatelessWidget {
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: ThemeMode.system,
+          navigatorObservers: [routeObserver],
           onGenerateRoute: _onGenerateRoute,
           builder: (context, child) =>
               AppShell(child: child ?? const SizedBox.shrink()),

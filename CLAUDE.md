@@ -42,4 +42,43 @@ go_router / provider / riverpod / コード生成系は追加しない。
 ## 出典
 
 問題・解説は `assets/data/exam-*.json` に含まれる `source` / `credit` を参照。
-解説文の著作権は学校法人 藤仁館学園にあり、個人利用の範囲に留める。
+解説文の著作権は学校法人 藤仁館学園にある。学習目的で公開しているが、
+権利者からの申し出があれば速やかに公開を停止する。
+
+## 日報
+
+保存先は `docs/daily-reports/YYYYMM/YYYYMMDD.md`。
+
+## 移植元
+
+Web 版は `~/develop/care-manager-exam`（GitHub: nishioka-shinji/care-manager-exam）。
+**移植元を読む前に `git fetch` して origin/main と比べること。**
+ローカルが遅れたまま移植を進め、全 16 年度のデータと一問一答モードを
+取りこぼした事故がある。
+
+## テストの書き方
+
+### 回帰を検出できることを実測で確かめる
+
+テストが通ることと、回帰を検出できることは別。実装後に本番コードを壊して
+テストが実際に落ちることを確認する。このリポジトリでは「全件 pass するが
+本番を壊しても落ちない」テストが 4 回見つかっている。
+
+テスト側に本番と同じ構造を書き写さない。本番だけが壊れたときに追随せず、
+検出力が見かけだけになる（`AppShell` を公開して共有しているのはこのため）。
+
+### rootBundle を使う非同期ロード
+
+`testWidgets` 内で待つには `tester.runAsync` が要るが、同一ファイル内で
+複数回使うと 2 件目以降でチャネル応答が解決しなくなる。リポジトリを
+フェイクに差し替えて `rootBundle` を迂回する（`test/home_screen_test.dart`）。
+`App` 全体を pump するテストは 1 ファイルに 1 件までにする。
+
+### 下部固定バーのあるレイアウト
+
+高さの上限を持たない書き方（`ConstrainedBox(minHeight:)` など）をすると、
+`Scaffold` の緩い制約が `AppButton` 内の `Align` まで伝播し、ボタンが
+画面全高のタップ領域になって本文が操作できなくなる。高さは必ず締める。
+
+safe-area は `viewPadding.bottom` と `padding.bottom` の大きい方を使う。
+Android 15 以降の全画面表示では 3 ボタン操作のとき前者が 0 を返すことがある。

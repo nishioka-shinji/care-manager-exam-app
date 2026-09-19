@@ -183,7 +183,7 @@ Future<HistoryController> _buildController(
     await storage.saveSession(session);
   }
   for (final round in statRounds) {
-    await storage.applyResults(round);
+    await storage.applyResults(_examId, round);
   }
   final controller = HistoryController(
     examRepository: examRepository ?? _singleExamRepository(),

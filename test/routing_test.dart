@@ -8,6 +8,7 @@ import 'package:care_manager_exam_app/widgets/confirm_sheet.dart';
 import 'package:care_manager_exam_app/widgets/footer_credit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// レビュー実測条件（400x800・safe-area bottom 34）を再現する。
 void _setViewport(WidgetTester tester) {
@@ -17,11 +18,66 @@ void _setViewport(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
-void main() {
-  testWidgets('ホームから結果・履歴へ push でき、戻ると元の画面に戻る', (tester) async {
-    await tester.pumpWidget(App(appState: AppState()));
+/// HomeScreen は index.json と exam-*.json を連続で rootBundle.loadString
+/// する（プラットフォームチャネル経由の非同期 I/O）。fake async ゾーンのまま
+/// では2件目以降が解決しないため runAsync で実時間のイベントループに載せる
+/// （quiz_screen_test.dart の _buildController と同じ理由）。
+///
+/// この runAsync 経由の待機は同一テストファイル内で複数回使うと以降の
+/// テストでチャネル応答が解決しなくなる制約があるため、ホームの実データ
+/// ロード完了を要するテストは1件に統合し、ここでだけ使う。
+Future<void> _pumpAppLoaded(WidgetTester tester) async {
+  await tester.pumpWidget(App(appState: AppState()));
+  for (var i = 0; i < 20; i++) {
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
+  }
+  await tester.pumpAndSettle();
+}
 
-    expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
+/// Scaffold/Overlay の位置だけを検証するテスト向けの最小土台。
+/// ホームの中身に依存しないため App を経由しないが、_AppShell が builder に
+/// 本番と同じ AppShell を通すことで、シェルの回帰をここで検出できる。
+/// ホームを土台にするとスピナーの無限アニメーションで pumpAndSettle が使えない。
+Future<void> _pumpMinimalScaffold(WidgetTester tester) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: AppTheme.light,
+      builder: (context, child) =>
+          AppShell(child: child ?? const SizedBox.shrink()),
+      home: const Scaffold(body: SizedBox.shrink()),
+    ),
+  );
+}
+
+void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  testWidgets('ホームから結果・履歴へ push でき、戻ると元の画面に戻る。'
+      'フッタの出典クレジットもスクロール末尾の通常フロー要素として表示される（F4）', (tester) async {
+    await _pumpAppLoaded(tester);
+
+    expect(find.text('本番通し60問を解く'), findsOneWidget);
+    expect(find.textContaining('学校法人 藤仁館学園'), findsOneWidget);
+
+    // 常時固定のオーバーレイではなく、ListView（本文）の中の通常フロー要素であり、
+    // 本文の最終要素（「履歴をすべて見る」ボタン）よりも下（末尾）に位置する。
+    expect(find.byType(FooterCredit), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(FooterCredit),
+        matching: find.textContaining('出典:'),
+      ),
+      findsOneWidget,
+    );
+    final footerTop = tester.getRect(find.byType(FooterCredit)).top;
+    final lastButtonBottom = tester.getRect(find.text('履歴をすべて見る')).bottom;
+    expect(footerTop, greaterThanOrEqualTo(lastButtonBottom));
 
     final navigator = tester.state<NavigatorState>(
       find.byType(Navigator).first,
@@ -34,7 +90,7 @@ void main() {
 
     navigator.pop();
     await tester.pumpAndSettle();
-    expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
+    expect(find.text('本番通し60問を解く'), findsOneWidget);
 
     navigator.pushNamed(Routes.history);
     await tester.pumpAndSettle();
@@ -42,21 +98,7 @@ void main() {
 
     navigator.pop();
     await tester.pumpAndSettle();
-    expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
-  });
-
-  testWidgets('フッタの出典クレジットがスクロール末尾の通常フロー要素として表示される（F4）', (tester) async {
-    await tester.pumpWidget(App(appState: AppState()));
-
-    expect(find.textContaining('出典:'), findsOneWidget);
-    expect(find.textContaining('学校法人 藤仁館学園'), findsOneWidget);
-
-    // 常時固定のオーバーレイではなく、ListView（本文）の中の通常フロー要素であり、
-    // 本文の他の要素（「演習へ」ボタン）より下（末尾）に位置する。
-    expect(find.byType(FooterCredit), findsOneWidget);
-    final footerTop = tester.getRect(find.byType(FooterCredit)).top;
-    final buttonTop = tester.getRect(find.text('演習へ')).top;
-    expect(footerTop, greaterThan(buttonTop));
+    expect(find.text('本番通し60問を解く'), findsOneWidget);
   });
 
   testWidgets('ConfirmSheet は確定を押すと true を返す', (tester) async {
@@ -132,7 +174,7 @@ void main() {
     tester,
   ) async {
     _setViewport(tester);
-    await tester.pumpWidget(App(appState: AppState()));
+    await _pumpMinimalScaffold(tester);
 
     final scaffoldContext = tester.element(find.byType(Scaffold).first);
     final mediaQuerySize = MediaQuery.of(scaffoldContext).size;
@@ -147,7 +189,7 @@ void main() {
   testWidgets('ConfirmSheet のバックドロップとパネルが画面下端(800)まで届く（F2）', (tester) async {
     _setViewport(tester);
 
-    await tester.pumpWidget(App(appState: AppState()));
+    await _pumpMinimalScaffold(tester);
 
     unawaited(
       ConfirmSheet.show(
@@ -179,7 +221,7 @@ void main() {
   ) async {
     _setViewport(tester);
 
-    await tester.pumpWidget(App(appState: AppState()));
+    await _pumpMinimalScaffold(tester);
 
     AppToast.show(tester.element(find.byType(Scaffold).first), 'メッセージ');
     await tester.pump();
@@ -197,7 +239,7 @@ void main() {
     _setViewport(tester);
 
     var tapped = false;
-    await tester.pumpWidget(App(appState: AppState()));
+    await _pumpMinimalScaffold(tester);
 
     final navigator = tester.state<NavigatorState>(
       find.byType(Navigator).first,
@@ -218,6 +260,15 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    // シェルが Navigator を圧縮していると bottomNavigationBar 自体が
+    // 画面下端(800)より上に来るため、位置も併せて検証する。
+    final barRect = tester.getRect(
+      find
+          .ancestor(of: find.text('採点する'), matching: find.byType(SizedBox))
+          .first,
+    );
+    expect(barRect.bottom, 800);
 
     await tester.tap(find.text('採点する'));
     await tester.pump();

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'features/history/history_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/quiz/quiz_screen.dart';
 import 'features/result/result_screen.dart';
 import 'routes.dart';
 import 'theme/app_theme.dart';
 import 'widgets/centered_body.dart';
-import 'widgets/footer_credit.dart';
 
 /// アプリ全体の状態を持つ入れ物。exam / stats / sessions / current の保持は
 /// 後続タスクが埋める。このタスクでは ChangeNotifier の器だけ用意する。
@@ -54,7 +54,7 @@ class App extends StatelessWidget {
       case Routes.history:
         return MaterialPageRoute(
           settings: settings,
-          builder: (_) => const HistoryPlaceholderScreen(),
+          builder: (_) => const HistoryScreen(),
         );
       case Routes.home:
       default:
@@ -81,42 +81,5 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CenteredBody(child: child);
-  }
-}
-
-class HistoryPlaceholderScreen extends StatelessWidget {
-  const HistoryPlaceholderScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const _PlaceholderScreen(title: '履歴', route: Routes.history);
-  }
-}
-
-/// 各画面の中身は後続タスクが作る。ここでは遷移が通ることだけを確認できればよい。
-class _PlaceholderScreen extends StatelessWidget {
-  const _PlaceholderScreen({required this.title, required this.route});
-
-  final String title;
-  final String route;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      // 出典クレジットは各画面がスクロール末尾に置く通常フロー要素（F4）。
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text('$title 画面（プレースホルダ）'),
-          const SizedBox(height: 16),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('戻る'),
-          ),
-          const FooterCredit(),
-        ],
-      ),
-    );
   }
 }

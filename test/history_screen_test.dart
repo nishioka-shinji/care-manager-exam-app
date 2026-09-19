@@ -8,6 +8,7 @@ import 'package:care_manager_exam_app/data/exam_repository.dart';
 import 'package:care_manager_exam_app/data/storage_repository.dart';
 import 'package:care_manager_exam_app/features/history/history_controller.dart';
 import 'package:care_manager_exam_app/features/history/history_screen.dart';
+import 'package:care_manager_exam_app/routes.dart';
 import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -152,6 +153,23 @@ Session _buildSession({
   );
 }
 
+/// load() の呼び出し回数を数えるためのテスト用サブクラス。
+/// didPopNext での再読み込みが実際に走ることを検証する。
+class _CountingHistoryController extends HistoryController {
+  _CountingHistoryController({
+    required super.examRepository,
+    required super.storageRepository,
+  });
+
+  int loadCallCount = 0;
+
+  @override
+  Future<void> load() async {
+    loadCallCount += 1;
+    await super.load();
+  }
+}
+
 Future<HistoryController> _buildController(
   WidgetTester tester, {
   ExamRepository? examRepository,
@@ -176,10 +194,13 @@ Future<HistoryController> _buildController(
 }
 
 // go_router 等は使わない方針のため素の Navigator + onGenerateRoute で組む。
+// routeObserver も本番と同じく登録し、didPopNext の再読み込みを検証できる
+// ようにする（app.dart の navigatorObservers と同じ設定）。
 Widget _wrap(Widget child) {
   return MaterialApp(
     theme: AppTheme.light,
     initialRoute: '/history',
+    navigatorObservers: [routeObserver],
     onGenerateRoute: (settings) {
       if (settings.name == '/history') {
         return MaterialPageRoute(builder: (_) => child);
@@ -416,5 +437,42 @@ void main() {
     // 28 回の分野名で出て、27 回の分野名にはならないこと。
     expect(find.textContaining('介護支援分野 18/25'), findsOneWidget);
     expect(find.textContaining('介護支援分野（27回） 18/25'), findsNothing);
+  });
+
+  testWidgets('結果画面から pop で戻ると再読み込みされ、履歴の変化が反映される'
+      '（RouteAware の didPopNext）', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final storage = StorageRepository();
+    await storage.init();
+    await storage.saveSession(
+      _buildSession(id: 's1', finishedAt: '2026-09-19T04:00:00.000Z'),
+    );
+    final controller = _CountingHistoryController(
+      examRepository: _singleExamRepository(),
+      storageRepository: storage,
+    );
+
+    // initState が controller.load() を呼ぶため、ここでは事前ロードしない。
+    await tester.pumpWidget(_wrap(HistoryScreen(controller: controller)));
+    await tester.pumpAndSettle();
+    expect(controller.loadCallCount, 1);
+    expect(find.textContaining('18 / 25'), findsOneWidget);
+
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
+    );
+
+    // 結果画面を見ている間に全削除が起きた状態を模す
+    // （別タブ・別経路での削除も含め、戻ってきたら最新化されるべき）。
+    navigator.pushNamed('/result', arguments: 's1');
+    await tester.pumpAndSettle();
+    await storage.clearAll();
+
+    navigator.pop();
+    await tester.pumpAndSettle();
+
+    expect(controller.loadCallCount, 2);
+    expect(find.textContaining('まだ受験履歴がありません'), findsOneWidget);
+    expect(find.textContaining('18 / 25'), findsNothing);
   });
 }

@@ -25,7 +25,7 @@ class HistoryScreen extends StatefulWidget {
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class _HistoryScreenState extends State<HistoryScreen> with RouteAware {
   late final HistoryController _controller;
 
   @override
@@ -41,12 +41,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute<dynamic>) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     // 注入されたコントローラはテスト側が所有するため、生成した場合のみ破棄する。
     if (widget.controller == null) {
       _controller.dispose();
     }
     super.dispose();
+  }
+
+  // 結果画面から戻ったとき、State が再利用され initState の load() は
+  // 再実行されないため、ここで拾い直す（home_screen.dart と同じ理由）。
+  @override
+  void didPopNext() {
+    _controller.load();
   }
 
   Future<void> _clearAll() async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'features/quiz/quiz_screen.dart';
+import 'features/result/result_screen.dart';
 import 'routes.dart';
 import 'theme/app_theme.dart';
 import 'widgets/centered_body.dart';
@@ -47,7 +48,7 @@ class App extends StatelessWidget {
         final sessionId = settings.arguments as String?;
         return MaterialPageRoute(
           settings: settings,
-          builder: (_) => ResultPlaceholderScreen(sessionId: sessionId),
+          builder: (_) => ResultScreen(sessionId: sessionId),
         );
       case Routes.history:
         return MaterialPageRoute(
@@ -91,21 +92,6 @@ class HomePlaceholderScreen extends StatelessWidget {
   }
 }
 
-class ResultPlaceholderScreen extends StatelessWidget {
-  const ResultPlaceholderScreen({super.key, this.sessionId});
-
-  final String? sessionId;
-
-  @override
-  Widget build(BuildContext context) {
-    return _PlaceholderScreen(
-      title: '結果',
-      route: Routes.result,
-      subtitle: sessionId == null ? null : 'sessionId: $sessionId',
-    );
-  }
-}
-
 class HistoryPlaceholderScreen extends StatelessWidget {
   const HistoryPlaceholderScreen({super.key});
 
@@ -117,15 +103,10 @@ class HistoryPlaceholderScreen extends StatelessWidget {
 
 /// 各画面の中身は後続タスクが作る。ここでは遷移が通ることだけを確認できればよい。
 class _PlaceholderScreen extends StatelessWidget {
-  const _PlaceholderScreen({
-    required this.title,
-    required this.route,
-    this.subtitle,
-  });
+  const _PlaceholderScreen({required this.title, required this.route});
 
   final String title;
   final String route;
-  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +117,6 @@ class _PlaceholderScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           Text('$title 画面（プレースホルダ）'),
-          if (subtitle != null) Text(subtitle!),
           const SizedBox(height: 16),
           if (route != Routes.home)
             TextButton(

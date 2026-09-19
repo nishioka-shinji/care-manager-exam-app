@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_tokens.dart';
 
+/// 移植元フッタが見せる媒体名。exam データ（source/credit）は URL と
+/// 監修者名のみで媒体名を持たないため、他画面と共有する定数として公開する。
+const String kExamSourceMediaName = 'ケアマネージャー試験過去問題集';
+
 /// 移植元 .footer-credit 相当。`</main>` の後ろに続く通常フロー要素であり、
 /// 常時固定のオーバーレイではない。各画面がスクロール末尾に自分で置く。
 /// 下部固定バーを持つ画面では [hasBottomBar] を true にして、
@@ -27,7 +31,7 @@ class FooterCredit extends StatelessWidget {
       ),
       child: Center(
         child: Text(
-          '出典: ケアマネージャー試験過去問題集 ／ 解答・解説: 学校法人 藤仁館学園',
+          '出典: $kExamSourceMediaName ／ 解答・解説: 学校法人 藤仁館学園',
           textAlign: TextAlign.center,
           style: theme.textTheme.labelSmall,
         ),

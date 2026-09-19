@@ -170,7 +170,7 @@ class _LoadErrorScaffold extends StatelessWidget {
                 label: 'ホームへ戻る',
                 variant: AppButtonVariant.base,
                 onPressed: () =>
-                    Navigator.of(context).pushReplacementNamed(Routes.home),
+                    Navigator.of(context).popUntil((route) => route.isFirst),
               ),
             ],
           ),

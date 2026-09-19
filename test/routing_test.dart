@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:care_manager_exam_app/app.dart';
+import 'package:care_manager_exam_app/core/models/session.dart';
+import 'package:care_manager_exam_app/data/storage_repository.dart';
 import 'package:care_manager_exam_app/routes.dart';
 import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:care_manager_exam_app/widgets/app_toast.dart';
@@ -8,6 +10,48 @@ import 'package:care_manager_exam_app/widgets/confirm_sheet.dart';
 import 'package:care_manager_exam_app/widgets/footer_credit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+// exam-28.json 1番（careセクション）は answers=[3,4]（正解）。
+// /result への arguments 結線テストで実在セッションとして使う。
+const _examId = '28';
+
+// ResultScreen は initState から ResultController.load()（rootBundle.loadString
+// を含む）を自前で呼ぶため、pump だけでは完了を待てない。実時間の delay を
+// 挟んで IO を進めてから pump し直す。
+Future<void> _pushAndAwaitLoad(
+  WidgetTester tester,
+  NavigatorState navigator,
+  String routeName, {
+  Object? arguments,
+}) async {
+  await tester.runAsync(() async {
+    navigator.pushNamed(routeName, arguments: arguments);
+    await tester.pump();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await tester.pump();
+  });
+}
+
+Future<void> _saveSession(WidgetTester tester, String sessionId) async {
+  final storage = StorageRepository();
+  await tester.runAsync(() async {
+    await storage.init();
+    await storage.saveSession(
+      Session(
+        id: sessionId,
+        examId: _examId,
+        mode: QuizMode.full,
+        startedAt: '2026-09-19T00:00:00.000Z',
+        finishedAt: '2026-09-19T00:30:00.000Z',
+        answers: const {
+          1: [3, 4],
+        },
+        score: const Score(total: 0, max: 0, bySection: {}),
+      ),
+    );
+  });
+}
 
 /// レビュー実測条件（400x800・safe-area bottom 34）を再現する。
 void _setViewport(WidgetTester tester) {
@@ -18,7 +62,7 @@ void _setViewport(WidgetTester tester) {
 }
 
 void main() {
-  testWidgets('ホームから結果・履歴へ push でき、戻ると元の画面に戻る', (tester) async {
+  testWidgets('ホームから履歴へ push でき、戻ると元の画面に戻る', (tester) async {
     await tester.pumpWidget(App(appState: AppState()));
 
     expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
@@ -27,15 +71,6 @@ void main() {
       find.byType(Navigator).first,
     );
 
-    navigator.pushNamed(Routes.result, arguments: 'session-1');
-    await tester.pumpAndSettle();
-    expect(find.text('結果 画面（プレースホルダ）'), findsOneWidget);
-    expect(find.text('sessionId: session-1'), findsOneWidget);
-
-    navigator.pop();
-    await tester.pumpAndSettle();
-    expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
-
     navigator.pushNamed(Routes.history);
     await tester.pumpAndSettle();
     expect(find.text('履歴 画面（プレースホルダ）'), findsOneWidget);
@@ -43,6 +78,83 @@ void main() {
     navigator.pop();
     await tester.pumpAndSettle();
     expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
+  });
+
+  // /result は T8 で本実装済み（ResultScreen）。存在しない sessionId で開くと
+  // ホームへ pushReplacement することを routing の結線として確認する
+  // （画面内部の詳細な振る舞いは test/result_screen_test.dart が持つ）。
+  testWidgets('存在しない sessionId で結果画面を開くとホームへ戻る', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(App(appState: AppState()));
+
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
+    );
+
+    await tester.runAsync(() async {
+      navigator.pushNamed(Routes.result, arguments: 'session-1');
+      await tester.pumpAndSettle();
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
+  });
+
+  // /result に渡した arguments（sessionId）が正しく結線され、そのセッション
+  // 由来の画面が出ることを確認する（F3: 常に null を渡す退行があれば
+  // notFound 経路に落ちてホームへ戻ってしまい、このテストが落ちる）。
+  testWidgets('実在する sessionId が arguments として結果画面に渡る', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await _saveSession(tester, 'session-real');
+    await tester.pumpWidget(App(appState: AppState()));
+
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
+    );
+
+    await _pushAndAwaitLoad(
+      tester,
+      navigator,
+      Routes.result,
+      arguments: 'session-real',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('採点結果'), findsOneWidget);
+    expect(find.text('ホーム 画面（プレースホルダ）'), findsNothing);
+  });
+
+  // F2: ホーム→履歴→結果と push した状態で「ホームへ」を押すと、結果画面
+  // だけが置換されバックスタックに履歴が残る退行があった。popUntil で
+  // ホームまで一括して畳み、端末バック相当（pop）でアプリが終了する
+  // （= ホームに留まる）ことを確認する。
+  testWidgets('ホーム→履歴→結果から「ホームへ」を押すと端末バック相当でホームに留まる（F2）', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await _saveSession(tester, 'session-f2');
+    await tester.pumpWidget(App(appState: AppState()));
+
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
+    );
+
+    navigator.pushNamed(Routes.history);
+    await tester.pumpAndSettle();
+
+    await _pushAndAwaitLoad(
+      tester,
+      navigator,
+      Routes.result,
+      arguments: 'session-f2',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('採点結果'), findsOneWidget);
+
+    await tester.tap(find.text('ホームへ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
+    expect(navigator.canPop(), isFalse);
   });
 
   testWidgets('フッタの出典クレジットがスクロール末尾の通常フロー要素として表示される（F4）', (tester) async {

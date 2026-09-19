@@ -232,6 +232,53 @@ void main() {
       expect(loaded, isNull);
     });
 
+    test('mode:drill かつ revealed 入りの current が復元される', () async {
+      final current = CurrentSession(
+        examId: '28',
+        mode: QuizMode.drill,
+        startedAt: '2026-09-19T00:00:00.000Z',
+        questionNos: [1, 2, 3],
+        cursor: 1,
+        answers: const {},
+        revealed: [2, 1],
+      );
+      final repo = StorageRepository();
+      await repo.init();
+      await repo.saveCurrent(current);
+
+      final loaded = await repo.loadCurrent();
+      expect(loaded, isNotNull);
+      expect(loaded!.mode, QuizMode.drill);
+      expect(loaded.revealed, [1, 2]);
+    });
+
+    test('revealed が List でない cme:current は削除され null が返る', () async {
+      SharedPreferences.setMockInitialValues({
+        'cme:current': '{"examId":"28","mode":"drill","startedAt":"x","questionNos":[1],"cursor":0,"answers":{},"revealed":"not a list"}',
+      });
+      final repo = StorageRepository();
+      await repo.init();
+
+      final loaded = await repo.loadCurrent();
+      expect(loaded, isNull);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('cme:current'), isNull);
+    });
+
+    test('revealed 無しの mode:full current は従来どおり読める（後方互換）', () async {
+      SharedPreferences.setMockInitialValues({
+        'cme:current': '{"examId":"28","mode":"full","startedAt":"x","questionNos":[1,2],"cursor":0,"answers":{}}',
+      });
+      final repo = StorageRepository();
+      await repo.init();
+
+      final loaded = await repo.loadCurrent();
+      expect(loaded, isNotNull);
+      expect(loaded!.mode, QuizMode.full);
+      expect(loaded.revealed, isEmpty);
+    });
+
     test('clearCurrent で cme:current が消える', () async {
       final repo = StorageRepository();
       await repo.init();

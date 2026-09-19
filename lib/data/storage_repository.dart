@@ -353,7 +353,11 @@ class StorageRepository {
         map['startedAt'] is String &&
         map['questionNos'] is List &&
         map['cursor'] is int &&
-        _isPlainMap(map['answers']);
+        _isPlainMap(map['answers']) &&
+        // revealed は一問一答モードだけが使う任意フィールド。full/review の
+        // current には存在しないため、未設定も妥当な形として許す。要素型の
+        // 検査は fromJson 側（非整数要素の除去）に寄せる。
+        (map['revealed'] == null || map['revealed'] is List);
   }
 
   /// 中断中セッション。無ければ null。破損していればキーを削除して null を返す。

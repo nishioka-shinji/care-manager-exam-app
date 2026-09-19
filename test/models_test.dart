@@ -118,5 +118,65 @@ void main() {
       expect(restored.cursor, current.cursor);
       expect(restored.answers, current.answers);
     });
+
+    test('CurrentSession: revealed 込みで JSON 往復する', () {
+      final current = CurrentSession(
+        examId: '28',
+        mode: QuizMode.drill,
+        startedAt: '2026-09-19T00:00:00.000Z',
+        questionNos: [1, 2, 3],
+        cursor: 1,
+        answers: const {},
+        revealed: [3, 1, 2],
+      );
+
+      final json = current.toJson();
+      expect(json['revealed'], [1, 2, 3]); // ソート済みで出す
+
+      final restored = CurrentSession.fromJson(json);
+      expect(restored.revealed, [1, 2, 3]);
+    });
+
+    test('CurrentSession: revealed が空のとき toJson にキー自体が出ない', () {
+      final current = CurrentSession(
+        examId: '28',
+        mode: QuizMode.full,
+        startedAt: '2026-09-19T00:00:00.000Z',
+        questionNos: [1],
+        cursor: 0,
+        answers: const {},
+      );
+
+      expect(current.toJson().containsKey('revealed'), isFalse);
+    });
+
+    test('CurrentSession: revealed キーが無い JSON は空リストで復元される', () {
+      final json = {
+        'examId': '28',
+        'mode': 'full',
+        'startedAt': '2026-09-19T00:00:00.000Z',
+        'questionNos': [1],
+        'cursor': 0,
+        'answers': <String, dynamic>{},
+      };
+
+      final restored = CurrentSession.fromJson(json);
+      expect(restored.revealed, isEmpty);
+    });
+
+    test('CurrentSession: revealed の非整数要素は捨てられる', () {
+      final json = {
+        'examId': '28',
+        'mode': 'drill',
+        'startedAt': '2026-09-19T00:00:00.000Z',
+        'questionNos': [1, 2],
+        'cursor': 0,
+        'answers': <String, dynamic>{},
+        'revealed': [1, 'a', 2.5, null, 2],
+      };
+
+      final restored = CurrentSession.fromJson(json);
+      expect(restored.revealed, [1, 2]);
+    });
   });
 }

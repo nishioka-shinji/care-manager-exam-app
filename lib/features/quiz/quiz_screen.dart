@@ -180,6 +180,17 @@ class _LoadErrorScaffold extends StatelessWidget {
   }
 }
 
+/// 実機の一部環境（Android edge-to-edge + 3ボタンナビゲーション）では
+/// viewPadding.bottom が 0 を返す既知の問題があるため、padding.bottom も
+/// 併せて見て大きい方を採用する（この画面はテキスト入力が無く IME による
+/// padding.bottom の減少は起こらない）。
+double _bottomSafeInset(BuildContext context) {
+  final mediaQuery = MediaQuery.of(context);
+  return mediaQuery.viewPadding.bottom > mediaQuery.padding.bottom
+      ? mediaQuery.viewPadding.bottom
+      : mediaQuery.padding.bottom;
+}
+
 class _QuizBody extends StatelessWidget {
   const _QuizBody({
     required this.controller,
@@ -291,10 +302,18 @@ class _QuizBody extends StatelessWidget {
           ),
         ),
       ),
+      // 高さに safe-area 分を足す。足さないとシステムのナビゲーションバーに
+      // ボタンが隠れて押せない。上限を外すとボタンが画面全高に広がるため、
+      // ConstrainedBox ではなく高さを決めて締める。
       bottomNavigationBar: SizedBox(
-        height: tokens.barHeight,
+        height: tokens.barHeight + _bottomSafeInset(context),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: EdgeInsets.only(
+            left: 12,
+            right: 12,
+            top: 10,
+            bottom: 10 + _bottomSafeInset(context),
+          ),
           child: Row(
             children: [
               Expanded(

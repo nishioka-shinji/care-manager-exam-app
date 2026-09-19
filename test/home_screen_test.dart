@@ -235,6 +235,50 @@ void main() {
     expect(find.text('前回の続きがあります'), findsNothing);
   });
 
+  testWidgets('演習の破棄シートのボタンがシステムのナビゲーションバーに隠れない', (tester) async {
+    // 実機（Pixel 8 の縦持ち）で確認シートのボタンがナビゲーションバーに
+    // 隠れて押せなかった。viewPadding を与えて再現する。
+    const navBar = 48.0;
+    addTearDown(tester.view.reset);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.viewPadding = const FakeViewPadding(bottom: navBar);
+    tester.view.padding = const FakeViewPadding(bottom: navBar);
+
+    final controller = await _buildController(
+      tester,
+      current: CurrentSession(
+        examId: _examId,
+        mode: QuizMode.full,
+        startedAt: '2026-09-19T00:00:00.000Z',
+        questionNos: List.generate(60, (i) => i + 1),
+        cursor: 0,
+        answers: const {},
+      ),
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('やめて最初から'));
+    await tester.pumpAndSettle();
+
+    final cancelRect = tester.getRect(find.text('キャンセル'));
+    final confirmRect = tester.getRect(find.text('やめて最初から').last);
+
+    // シートのボタンの下端がナビゲーションバーの上端より上にあること。
+    expect(cancelRect.bottom, lessThanOrEqualTo(800 - navBar));
+    expect(confirmRect.bottom, lessThanOrEqualTo(800 - navBar));
+
+    // ボタンが画面全高のタップ領域になっていないこと。
+    final button = tester.getRect(
+      find
+          .ancestor(of: find.text('キャンセル'), matching: find.byType(InkWell))
+          .first,
+    );
+    expect(button.height, greaterThanOrEqualTo(40));
+    expect(button.height, lessThan(80));
+  });
+
   testWidgets('復習対象0件で復習ボタンが disabled になり理由テキストが出る', (tester) async {
     final controller = await _buildController(tester);
     await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));

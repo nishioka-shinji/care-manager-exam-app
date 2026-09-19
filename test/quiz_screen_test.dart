@@ -382,4 +382,98 @@ void main() {
     expect(find.textContaining('正解'), findsNothing);
     expect(find.textContaining('不正解'), findsNothing);
   });
+
+  testWidgets('下部バーのボタンがシステムのナビゲーションバーに隠れない', (tester) async {
+    // 実機（Pixel 8 の縦持ち）で下部バーがシステムのナビゲーションバーに
+    // 隠れて押せなかった。viewPadding を与えて再現する。
+    const navBarHeight = 48.0;
+    addTearDown(tester.view.reset);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.viewPadding = const FakeViewPadding(bottom: navBarHeight);
+    tester.view.padding = const FakeViewPadding(bottom: navBarHeight);
+
+    final controller = await _buildController(
+      tester,
+      questionNos: const [1],
+      answers: const {
+        1: [1, 2, 3],
+      },
+    );
+    await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    final buttonRect = tester.getRect(find.text('採点する'));
+
+    // ボタンの下端がナビゲーションバーの上端より上にあること。
+    expect(buttonRect.bottom, lessThanOrEqualTo(800 - navBarHeight));
+
+    // タップが実際に届くこと（ナビゲーションバーに吸われていない）。
+    await tester.tap(find.text('採点する'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('result:'), findsOneWidget);
+  });
+
+  testWidgets('下部バーのボタンがシステムのナビゲーションバーに隠れず、画面全高にも広がらない', (tester) async {
+    // 実機（Pixel 8 の縦持ち）でボタンがナビゲーションバーに隠れて押せなかった。
+    // 高さの上限を外すとボタンが画面全高のタップ領域になり本文が押せなくなる。
+    const navBar = 48.0;
+    addTearDown(tester.view.reset);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.viewPadding = const FakeViewPadding(bottom: navBar);
+    tester.view.padding = const FakeViewPadding(bottom: navBar);
+
+    final controller = await _buildController(tester, questionNos: [1, 2]);
+    await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    final bar = tester.getRect(find.text('採点する'));
+    expect(bar.bottom, lessThanOrEqualTo(800 - navBar));
+
+    final button = tester.getRect(
+      find
+          .ancestor(of: find.text('採点する'), matching: find.byType(InkWell))
+          .first,
+    );
+    expect(button.height, lessThan(80));
+  });
+
+  testWidgets('採点確認シートのボタンがシステムのナビゲーションバーに隠れない', (tester) async {
+    // 実機（Pixel 8 の縦持ち）で確認シートのボタンがナビゲーションバーに
+    // 隠れて押せなかった。viewPadding を与えて再現する。
+    const navBar = 48.0;
+    addTearDown(tester.view.reset);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.viewPadding = const FakeViewPadding(bottom: navBar);
+    tester.view.padding = const FakeViewPadding(bottom: navBar);
+
+    final controller = await _buildController(
+      tester,
+      questionNos: const [1, 2],
+    );
+    await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('採点する'));
+    await tester.pumpAndSettle();
+
+    final cancelRect = tester.getRect(find.text('キャンセル'));
+    final confirmRect = tester.getRect(find.text('採点する').last);
+
+    // シートのボタンの下端がナビゲーションバーの上端より上にあること。
+    expect(cancelRect.bottom, lessThanOrEqualTo(800 - navBar));
+    expect(confirmRect.bottom, lessThanOrEqualTo(800 - navBar));
+
+    // ボタンが画面全高のタップ領域になっていないこと。
+    final button = tester.getRect(
+      find
+          .ancestor(of: find.text('キャンセル'), matching: find.byType(InkWell))
+          .first,
+    );
+    expect(button.height, greaterThanOrEqualTo(40));
+    expect(button.height, lessThan(80));
+  });
 }

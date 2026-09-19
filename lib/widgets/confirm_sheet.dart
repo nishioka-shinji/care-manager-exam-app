@@ -80,7 +80,14 @@ class _ConfirmSheetOverlayState extends State<_ConfirmSheetOverlay>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final screenHeight = MediaQuery.of(context).size.height;
+    final mediaQuery = MediaQuery.of(context);
+    final screenHeight = mediaQuery.size.height;
+    // 実機の一部環境では viewPadding.bottom が 0 を返す既知の問題があるため
+    // padding.bottom も見て大きい方を採用する（このシートに入力欄は無い）。
+    final bottomSafeInset =
+        mediaQuery.viewPadding.bottom > mediaQuery.padding.bottom
+        ? mediaQuery.viewPadding.bottom
+        : mediaQuery.padding.bottom;
 
     return AnimatedBuilder(
       animation: _controller,
@@ -106,7 +113,12 @@ class _ConfirmSheetOverlayState extends State<_ConfirmSheetOverlay>
                   constraints: BoxConstraints(maxHeight: screenHeight * 0.7),
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      16,
+                      16,
+                      16 + bottomSafeInset,
+                    ),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surface,
                       borderRadius: const BorderRadius.only(

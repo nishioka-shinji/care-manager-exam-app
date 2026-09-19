@@ -6,6 +6,7 @@ import 'package:care_manager_exam_app/features/result/result_screen.dart';
 import 'package:care_manager_exam_app/features/result/widgets/result_grid.dart';
 import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:care_manager_exam_app/theme/app_tokens.dart';
+import 'package:care_manager_exam_app/widgets/app_button.dart';
 import 'package:care_manager_exam_app/widgets/footer_credit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -438,5 +439,117 @@ void main() {
 
     // フッタの下端は下部バーの上端より上にある（重ならない）。
     expect(footerRect.bottom, lessThanOrEqualTo(bottomBarRect.top + 1));
+  });
+
+  testWidgets('下部バーのボタンがシステムのナビゲーションバーに隠れない', (tester) async {
+    // 実機（Pixel 8 の縦持ち）で下部バーがシステムのナビゲーションバーに
+    // 隠れて押せなかった。viewPadding を与えて再現する。
+    const navBarHeight = 48.0;
+    addTearDown(tester.view.reset);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.viewPadding = const FakeViewPadding(bottom: navBarHeight);
+    tester.view.padding = const FakeViewPadding(bottom: navBarHeight);
+
+    final controller = await _buildController(
+      tester,
+      sessionId: 's10',
+      answers: const {
+        1: [3, 4],
+      },
+    );
+
+    await tester.pumpWidget(_wrap(ResultScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    final buttonRect = tester.getRect(find.text('ホームへ'));
+
+    // ボタンの下端がナビゲーションバーの上端より上にあること。
+    expect(buttonRect.bottom, lessThanOrEqualTo(800 - navBarHeight));
+
+    // タップが実際に届くこと（ナビゲーションバーに吸われていない）。
+    await tester.tap(find.text('ホームへ'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('下部バーのボタンがシステムのナビゲーションバーに隠れず、画面全高にも広がらない', (tester) async {
+    // 実機（Pixel 8 の縦持ち）でボタンがナビゲーションバーに隠れて押せなかった。
+    // 高さの上限を外すとボタンが画面全高のタップ領域になり本文が押せなくなる。
+    const navBar = 48.0;
+    addTearDown(tester.view.reset);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.viewPadding = const FakeViewPadding(bottom: navBar);
+    tester.view.padding = const FakeViewPadding(bottom: navBar);
+
+    final controller = await _buildController(
+      tester,
+      sessionId: 's10',
+      answers: const {
+        1: [3, 4],
+      },
+    );
+
+    await tester.pumpWidget(_wrap(ResultScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    final button = tester.getRect(find.byType(AppButton).first);
+    expect(button.bottom, lessThanOrEqualTo(800 - navBar));
+    expect(button.height, lessThan(80));
+
+    await tester.tap(find.text('ホームへ'));
+    await tester.pumpAndSettle();
+    expect(find.text('home'), findsOneWidget);
+  });
+
+  testWidgets('間違えた問題が多いときもボタンのラベルが省略されず全文表示される', (tester) async {
+    // 実機で「間違えた問題だけ復習する（60問）」が「間違えた問題だけ復」で
+    // 切れていた。全問不正解にして長いラベルを再現する。画面幅を Pixel 8
+    // 相当に固定し、ボタン幅がラベルより確実に狭くなる条件を作る。
+    addTearDown(tester.view.reset);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(400, 800);
+
+    final controller = await _buildController(
+      tester,
+      sessionId: 's_wrong_all',
+      answers: {for (var i = 1; i <= 60; i++) i: <int>[]},
+    );
+
+    await tester.pumpWidget(_wrap(ResultScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    // ラベルの Text ウィジェットが省略されず全文を保持していること。
+    final labelFinder = find.text('間違えた問題だけ復習する（60問）');
+    expect(labelFinder, findsOneWidget);
+
+    // 折り返し高さが確保できない固定高さの下部バーでも文字が欠けないよう、
+    // 収まらない分は縮小されている（FittedBox で 1 行に収める）こと。
+    final buttonFinder = find.byType(AppButton).last;
+    expect(
+      find.descendant(of: buttonFinder, matching: find.byType(FittedBox)),
+      findsOneWidget,
+    );
+
+    // ラベルの本来の描画幅がボタンの表示幅を超えている（＝縮小が必要な
+    // 長さである）ことを前提として、実際の描画矩形がボタン内に収まって
+    // クリップされていないことを確認する。
+    final textPainter = TextPainter(
+      text: const TextSpan(
+        text: '間違えた問題だけ復習する（60問）',
+        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final buttonRect = tester.getRect(buttonFinder);
+    expect(
+      textPainter.width,
+      greaterThan(buttonRect.width),
+      reason: 'このテストは縮小が必要なほど長いラベルを前提にしている',
+    );
+
+    final labelRect = tester.getRect(labelFinder);
+    expect(buttonRect.left, lessThanOrEqualTo(labelRect.left + 0.5));
+    expect(buttonRect.right, greaterThanOrEqualTo(labelRect.right - 0.5));
   });
 }

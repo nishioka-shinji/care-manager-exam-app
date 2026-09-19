@@ -66,12 +66,19 @@ class AppButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(tokens.radius),
             ),
             alignment: Alignment.center,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: foreground,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+            // 移植元は折り返す（.btn に white-space 指定が無い）が、外側の
+            // 下部バーは高さ固定のため折り返すと文字が上下に切れる。
+            // FittedBox で 1 行に収まるよう縮小し、全文を読めるようにする。
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),

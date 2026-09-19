@@ -6,6 +6,7 @@ import 'package:care_manager_exam_app/features/quiz/quiz_controller.dart';
 import 'package:care_manager_exam_app/features/quiz/quiz_screen.dart';
 import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:care_manager_exam_app/theme/app_tokens.dart';
+import 'package:care_manager_exam_app/widgets/app_badge.dart';
 import 'package:care_manager_exam_app/widgets/number_grid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -475,5 +476,90 @@ void main() {
     );
     expect(button.height, greaterThanOrEqualTo(40));
     expect(button.height, lessThan(80));
+  });
+
+  group('NumberGrid の cellStatusOf', () {
+    // 一問一答モードの回答状況シートは「正解/不正解/回答済み(答え合わせ前)/
+    // 未回答」の4値を同時に扱うため、answeredOf・statusOf では表現できない
+    // （T5）。cellStatusOf で4値それぞれの背景色を検証する。
+    Color materialColorOf(WidgetTester tester, String label) {
+      final material = tester.widget<Material>(
+        find
+            .ancestor(
+              of: find.descendant(
+                of: find.byType(NumberGrid),
+                matching: find.text(label),
+              ),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      return material.color!;
+    }
+
+    testWidgets('answered/ok/ng/none で背景色が4値とも異なる', (tester) async {
+      const statuses = [
+        CellStatus.answered,
+        CellStatus.ok,
+        CellStatus.ng,
+        CellStatus.none,
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: Scaffold(
+            body: NumberGrid(
+              count: statuses.length,
+              cellStatusOf: (index) => statuses[index],
+              onTap: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      final theme = AppTheme.light;
+      final tokens = theme.extension<AppTokens>()!;
+
+      // answered は accent（primary）、ok は正解の緑（tokens.ok）で、
+      // 同じ色に潰れていないことが4値対応の核心。
+      expect(materialColorOf(tester, '1'), theme.colorScheme.primary);
+      expect(materialColorOf(tester, '2'), tokens.ok);
+      expect(materialColorOf(tester, '3'), tokens.ng);
+      expect(materialColorOf(tester, '4'), tokens.none);
+
+      expect(materialColorOf(tester, '1'), isNot(materialColorOf(tester, '2')));
+    });
+
+    testWidgets('answeredOf・statusOf と併用しても cellStatusOf が優先される', (
+      tester,
+    ) async {
+      // cellStatusOf は「他のコールバックより優先する」契約（number_grid.dart）。
+      // answeredOf/statusOf も同時に渡し、判定順が入れ替わっていないかを見る。
+      // 判定順を statusOf 最優先や answeredOf 最優先に入れ替えても、
+      // cellStatusOf 単独指定のテストだけでは検出できない（統合レビュー F1）。
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: Scaffold(
+            body: NumberGrid(
+              count: 1,
+              cellStatusOf: (_) => CellStatus.ok,
+              answeredOf: (_) => true,
+              statusOf: (_) => AppBadgeStatus.ng,
+              onTap: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      final theme = AppTheme.light;
+      final tokens = theme.extension<AppTokens>()!;
+
+      // cellStatusOf が優先されるなら tokens.ok。answeredOf が勝てば primary、
+      // statusOf が勝てば tokens.ng になり、どちらもここでは不正解。
+      expect(materialColorOf(tester, '1'), tokens.ok);
+      expect(materialColorOf(tester, '1'), isNot(theme.colorScheme.primary));
+      expect(materialColorOf(tester, '1'), isNot(tokens.ng));
+    });
   });
 }

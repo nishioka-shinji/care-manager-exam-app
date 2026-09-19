@@ -9,6 +9,8 @@ import 'app_badge.dart';
 /// セルの色軸は呼び出し元によって異なる。演習画面の回答状況シートは
 /// 「回答済み/未回答」の2値（[answeredOf]）、結果画面の正誤一覧は
 /// 「正解/不正解/未回答」の3値（[statusOf]）を使うため両方受け付ける。
+/// 一問一答モードの回答状況シートのように「正解/不正解/回答済み/未回答」の
+/// 4値が同時に必要な場合は [cellStatusOf] を使う。
 /// 移植元でも色が違う（回答済み=accent、正解=ok）ため内部で区別して塗る。
 /// 移植元 quiz.css の .quiz-navcell--* は色軸と「現在地か」が直交する
 /// 2 軸（現在地は枠強調のみで背景と共存する）で、[currentIndex] はこれを再現する。
@@ -19,12 +21,13 @@ class NumberGrid extends StatelessWidget {
     required this.onTap,
     this.answeredOf,
     this.statusOf,
+    this.cellStatusOf,
     this.labelOf,
     this.semanticsLabelOf,
     this.currentIndex,
   }) : assert(
-         answeredOf != null || statusOf != null,
-         'answeredOf か statusOf のいずれかを渡してください。',
+         answeredOf != null || statusOf != null || cellStatusOf != null,
+         'answeredOf か statusOf か cellStatusOf のいずれかを渡してください。',
        );
 
   final int count;
@@ -33,8 +36,14 @@ class NumberGrid extends StatelessWidget {
   /// 回答済み/未回答の2値軸（演習画面の回答状況シート用）。
   final bool Function(int index)? answeredOf;
 
-  /// 正解/不正解/未回答の3値軸（結果画面の正誤一覧用）。指定時はこちらを優先する。
+  /// 正解/不正解/未回答の3値軸（結果画面の正誤一覧用）。
   final AppBadgeStatus Function(int index)? statusOf;
+
+  /// 正解/不正解/回答済み/未回答の4値軸（一問一答モードの回答状況シート用）。
+  /// [answeredOf] / [statusOf] との併用は非推奨（既存呼び出し元の互換のため
+  /// 型としては許すが、新規呼び出しでは他を消してこれ単独で使うこと）。
+  /// 併用時はこちらが優先し、他のコールバックは無視される。
+  final CellStatus Function(int index)? cellStatusOf;
 
   /// セルに表示するラベル（実際の問番号など）。未指定時は index+1 を表示する。
   final String Function(int index)? labelOf;
@@ -62,9 +71,14 @@ class NumberGrid extends StatelessWidget {
         mainAxisExtent: tokens.tap,
       ),
       itemBuilder: (context, index) {
-        final status = statusOf != null
-            ? statusOf!(index)._asCellStatus
-            : (answeredOf!(index) ? _CellStatus.answered : _CellStatus.none);
+        final CellStatus status;
+        if (cellStatusOf != null) {
+          status = cellStatusOf!(index);
+        } else if (statusOf != null) {
+          status = statusOf!(index)._asCellStatus;
+        } else {
+          status = answeredOf!(index) ? CellStatus.answered : CellStatus.none;
+        }
         return _NumberGridCell(
           label: labelOf != null ? labelOf!(index) : '${index + 1}',
           semanticsLabel: semanticsLabelOf?.call(index),
@@ -77,16 +91,16 @@ class NumberGrid extends StatelessWidget {
   }
 }
 
-/// [NumberGrid] 内部の色軸。[AppBadgeStatus.ok] は呼び出し元によって
+/// [NumberGrid] の色軸。[AppBadgeStatus.ok] は呼び出し元によって
 /// 「正解」（ok=緑）と「回答済み」（answered=accent）の2つの意味を持つため、
 /// 色マッピングの段階で区別できるようここで分ける。
-enum _CellStatus { answered, ok, ng, none }
+enum CellStatus { answered, ok, ng, none }
 
 extension on AppBadgeStatus {
-  _CellStatus get _asCellStatus => switch (this) {
-    AppBadgeStatus.ok => _CellStatus.ok,
-    AppBadgeStatus.ng => _CellStatus.ng,
-    AppBadgeStatus.none => _CellStatus.none,
+  CellStatus get _asCellStatus => switch (this) {
+    AppBadgeStatus.ok => CellStatus.ok,
+    AppBadgeStatus.ng => CellStatus.ng,
+    AppBadgeStatus.none => CellStatus.none,
   };
 }
 
@@ -100,7 +114,7 @@ class _NumberGridCell extends StatelessWidget {
   });
 
   final String label;
-  final _CellStatus status;
+  final CellStatus status;
   final bool isCurrent;
   final VoidCallback onTap;
   final String? semanticsLabel;
@@ -119,16 +133,16 @@ class _NumberGridCell extends StatelessWidget {
     final Color background;
     final Color foreground;
     switch (status) {
-      case _CellStatus.answered:
+      case CellStatus.answered:
         background = theme.colorScheme.primary;
         foreground = theme.colorScheme.onPrimary;
-      case _CellStatus.ok:
+      case CellStatus.ok:
         background = tokens.ok;
         foreground = tokens.onOk;
-      case _CellStatus.ng:
+      case CellStatus.ng:
         background = tokens.ng;
         foreground = tokens.onNg;
-      case _CellStatus.none:
+      case CellStatus.none:
         background = tokens.none;
         foreground = tokens.onNone;
     }

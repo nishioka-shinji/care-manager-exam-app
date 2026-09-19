@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_tokens.dart';
 
-/// 出典の媒体名。フッタと年度カードの出典表示（home_screen.dart）で共有する。
-const kExamSourceMediaName = 'ケアマネージャー試験過去問題集';
+/// 出典の媒体名。exam データは URL と監修者名しか持たないため、
+/// フッタ・年度カード・結果画面の解説で共有する定数として置く。
+const String kExamSourceMediaName = 'ケアマネージャー試験過去問題集';
 
 /// 移植元 .footer-credit 相当。`</main>` の後ろに続く通常フロー要素であり、
 /// 常時固定のオーバーレイではない。各画面がスクロール末尾に自分で置く。

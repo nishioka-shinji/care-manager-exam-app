@@ -1,89 +1,141 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_tokens.dart';
+import 'app_badge.dart';
 
-/// 移植元 .grid-nums 相当。問番号などを並べるグリッド。5 列、380px 超で 6 列。
+/// 移植元 .grid-nums 相当。問番号などを並べるグリッド。5 列、
+/// viewport 幅 380px 以上で 6 列（移植元 style.css の @media は viewport 基準）。
 ///
-/// 移植元 quiz.css の .quiz-navcell--* は「回答済み/未回答」と「現在地か」が
-/// 直交する 2 軸（現在地は枠強調のみで背景と共存する）。[answeredOf] と
-/// [currentIndex] を分けて渡すことでこれを再現する。
+/// セルの色軸は呼び出し元によって異なる。演習画面の回答状況シートは
+/// 「回答済み/未回答」の2値（[answeredOf]）、結果画面の正誤一覧は
+/// 「正解/不正解/未回答」の3値（[statusOf]）を使うため両方受け付ける。
+/// 移植元でも色が違う（回答済み=accent、正解=ok）ため内部で区別して塗る。
+/// 移植元 quiz.css の .quiz-navcell--* は色軸と「現在地か」が直交する
+/// 2 軸（現在地は枠強調のみで背景と共存する）で、[currentIndex] はこれを再現する。
 class NumberGrid extends StatelessWidget {
   const NumberGrid({
     super.key,
     required this.count,
-    required this.answeredOf,
     required this.onTap,
+    this.answeredOf,
+    this.statusOf,
     this.labelOf,
+    this.semanticsLabelOf,
     this.currentIndex,
-  });
+  }) : assert(
+         answeredOf != null || statusOf != null,
+         'answeredOf か statusOf のいずれかを渡してください。',
+       );
 
   final int count;
-  final bool Function(int index) answeredOf;
   final void Function(int index) onTap;
+
+  /// 回答済み/未回答の2値軸（演習画面の回答状況シート用）。
+  final bool Function(int index)? answeredOf;
+
+  /// 正解/不正解/未回答の3値軸（結果画面の正誤一覧用）。指定時はこちらを優先する。
+  final AppBadgeStatus Function(int index)? statusOf;
 
   /// セルに表示するラベル（実際の問番号など）。未指定時は index+1 を表示する。
   final String Function(int index)? labelOf;
+
+  /// セルの Semantics ラベル。未指定時はラベルのテキストのみになる。
+  final String Function(int index)? semanticsLabelOf;
 
   final int? currentIndex;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.appTokens;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth > 380 ? 6 : 5;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: count,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            mainAxisExtent: tokens.tap,
-          ),
-          itemBuilder: (context, index) {
-            return _NumberGridCell(
-              label: labelOf != null ? labelOf!(index) : '${index + 1}',
-              answered: answeredOf(index),
-              isCurrent: index == currentIndex,
-              onTap: () => onTap(index),
-            );
-          },
+    // viewport 幅で判定する（移植元の @media (min-width) はビューポート基準で
+    // あり、LayoutBuilder の constraints は画面パディング等を引いた内側の幅の
+    // ため、それで判定すると閾値がずれる）。
+    final columns = MediaQuery.sizeOf(context).width >= 380 ? 6 : 5;
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: count,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        mainAxisExtent: tokens.tap,
+      ),
+      itemBuilder: (context, index) {
+        final status = statusOf != null
+            ? statusOf!(index)._asCellStatus
+            : (answeredOf!(index) ? _CellStatus.answered : _CellStatus.none);
+        return _NumberGridCell(
+          label: labelOf != null ? labelOf!(index) : '${index + 1}',
+          semanticsLabel: semanticsLabelOf?.call(index),
+          status: status,
+          isCurrent: index == currentIndex,
+          onTap: () => onTap(index),
         );
       },
     );
   }
 }
 
+/// [NumberGrid] 内部の色軸。[AppBadgeStatus.ok] は呼び出し元によって
+/// 「正解」（ok=緑）と「回答済み」（answered=accent）の2つの意味を持つため、
+/// 色マッピングの段階で区別できるようここで分ける。
+enum _CellStatus { answered, ok, ng, none }
+
+extension on AppBadgeStatus {
+  _CellStatus get _asCellStatus => switch (this) {
+    AppBadgeStatus.ok => _CellStatus.ok,
+    AppBadgeStatus.ng => _CellStatus.ng,
+    AppBadgeStatus.none => _CellStatus.none,
+  };
+}
+
 class _NumberGridCell extends StatelessWidget {
   const _NumberGridCell({
     required this.label,
-    required this.answered,
+    required this.status,
     required this.isCurrent,
     required this.onTap,
+    this.semanticsLabel,
   });
 
   final String label;
-  final bool answered;
+  final _CellStatus status;
   final bool isCurrent;
   final VoidCallback onTap;
+  final String? semanticsLabel;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.appTokens;
     final theme = Theme.of(context);
 
-    // 背景色は回答済み/未回答の軸、枠色は現在地の軸。移植元 quiz.css の
-    // .quiz-navcell--answered/--unanswered と .quiz-navcell--current は
-    // 独立して重ねがけされる（現在地は枠強調のみ）。
+    // 背景色は状態（回答済み/未回答、または正解/不正解/未回答）の軸、枠色は
+    // 現在地の軸。移植元 quiz.css の .quiz-navcell--answered/--unanswered と
+    // .quiz-navcell--current は独立して重ねがけされる（現在地は枠強調のみ）。
     // 非現在地の既定枠は style.css の .grid-nums > * にある --border（全セル共通）。
-    final background = answered ? theme.colorScheme.primary : tokens.none;
-    final foreground = answered ? theme.colorScheme.onPrimary : tokens.onNone;
+    // answered（演習シートの回答済み）は accent、ok（結果画面の正解）は緑と
+    // 移植元でも色が違うため、ここで別々にマッピングする（統合レビュー F7）。
+    final Color background;
+    final Color foreground;
+    switch (status) {
+      case _CellStatus.answered:
+        background = theme.colorScheme.primary;
+        foreground = theme.colorScheme.onPrimary;
+      case _CellStatus.ok:
+        background = tokens.ok;
+        foreground = tokens.onOk;
+      case _CellStatus.ng:
+        background = tokens.ng;
+        foreground = tokens.onNg;
+      case _CellStatus.none:
+        background = tokens.none;
+        foreground = tokens.onNone;
+    }
     final borderColor = isCurrent ? theme.colorScheme.onSurface : tokens.border;
     final borderWidth = isCurrent ? 2.0 : 1.0;
 
-    return Material(
+    final cell = Material(
       color: background,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
@@ -110,5 +162,8 @@ class _NumberGridCell extends StatelessWidget {
         ),
       ),
     );
+
+    if (semanticsLabel == null) return cell;
+    return Semantics(label: semanticsLabel, button: true, child: cell);
   }
 }

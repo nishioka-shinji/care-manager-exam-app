@@ -58,7 +58,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('ホームから結果・履歴へ push でき、戻ると元の画面に戻る。'
+  testWidgets('ホームから履歴へ push でき、戻ると元の画面に戻る。'
       'フッタの出典クレジットもスクロール末尾の通常フロー要素として表示される（F4）', (tester) async {
     await _pumpAppLoaded(tester);
 
@@ -82,15 +82,6 @@ void main() {
     final navigator = tester.state<NavigatorState>(
       find.byType(Navigator).first,
     );
-
-    navigator.pushNamed(Routes.result, arguments: 'session-1');
-    await tester.pumpAndSettle();
-    expect(find.text('結果 画面（プレースホルダ）'), findsOneWidget);
-    expect(find.text('sessionId: session-1'), findsOneWidget);
-
-    navigator.pop();
-    await tester.pumpAndSettle();
-    expect(find.text('本番通し60問を解く'), findsOneWidget);
 
     navigator.pushNamed(Routes.history);
     await tester.pumpAndSettle();

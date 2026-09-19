@@ -1,0 +1,53 @@
+import 'session.dart';
+
+/// 進行中の演習。`cme:current` に保存される単位で、離脱時の再開に使う。
+///
+/// [answers] は演習中に触れた問だけを持つスパースな Map（未回答の問はキー自体が
+/// 無い）。[Session.answers] とは異なり、確定記録ではないためこの差を保つ。
+/// キー変換は [Session] と同様にここの fromJson/toJson に閉じる。
+class CurrentSession {
+  const CurrentSession({
+    required this.examId,
+    required this.mode,
+    required this.startedAt,
+    required this.questionNos,
+    required this.cursor,
+    required this.answers,
+  });
+
+  final String examId;
+  final QuizMode mode;
+  final String startedAt;
+  final List<int> questionNos;
+  final int cursor;
+  final Map<int, List<int>> answers;
+
+  factory CurrentSession.fromJson(Map<String, dynamic> json) {
+    return CurrentSession(
+      examId: json['examId'] as String,
+      mode: QuizMode.fromJson(json['mode'] as String),
+      startedAt: json['startedAt'] as String,
+      questionNos: (json['questionNos'] as List<dynamic>)
+          .map((e) => e as int)
+          .toList(),
+      cursor: json['cursor'] as int,
+      answers: (json['answers'] as Map<String, dynamic>).map(
+        (key, value) => MapEntry(
+          int.parse(key),
+          (value as List<dynamic>).map((e) => e as int).toList(),
+        ),
+      ),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'examId': examId,
+      'mode': mode.toJson(),
+      'startedAt': startedAt,
+      'questionNos': questionNos,
+      'cursor': cursor,
+      'answers': answers.map((key, value) => MapEntry(key.toString(), value)),
+    };
+  }
+}

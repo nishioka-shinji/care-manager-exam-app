@@ -17,7 +17,7 @@ void _setViewport(WidgetTester tester) {
 }
 
 void main() {
-  testWidgets('ホームから演習・結果・履歴へ push でき、戻ると元の画面に戻る', (tester) async {
+  testWidgets('ホームから結果・履歴へ push でき、戻ると元の画面に戻る', (tester) async {
     await tester.pumpWidget(App(appState: AppState()));
 
     expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
@@ -25,14 +25,6 @@ void main() {
     final navigator = tester.state<NavigatorState>(
       find.byType(Navigator).first,
     );
-
-    navigator.pushNamed(App.routeQuiz);
-    await tester.pumpAndSettle();
-    expect(find.text('演習 画面（プレースホルダ）'), findsOneWidget);
-
-    navigator.pop();
-    await tester.pumpAndSettle();
-    expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
 
     navigator.pushNamed(App.routeResult, arguments: 'session-1');
     await tester.pumpAndSettle();

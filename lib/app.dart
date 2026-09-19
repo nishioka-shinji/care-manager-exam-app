@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'features/quiz/quiz_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/centered_body.dart';
 import 'widgets/footer_credit.dart';
@@ -44,7 +45,7 @@ class App extends StatelessWidget {
       case routeQuiz:
         return MaterialPageRoute(
           settings: settings,
-          builder: (_) => const QuizPlaceholderScreen(),
+          builder: (_) => const QuizScreen(),
         );
       case routeResult:
         final sessionId = settings.arguments as String?;
@@ -91,15 +92,6 @@ class HomePlaceholderScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const _PlaceholderScreen(title: 'ホーム', route: App.routeHome);
-  }
-}
-
-class QuizPlaceholderScreen extends StatelessWidget {
-  const QuizPlaceholderScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const _PlaceholderScreen(title: '演習', route: App.routeQuiz);
   }
 }
 

@@ -3,19 +3,28 @@ import 'package:flutter/material.dart';
 import '../theme/app_tokens.dart';
 
 /// 移植元 .grid-nums 相当。問番号などを並べるグリッド。5 列、380px 超で 6 列。
-enum NumberGridCellState { answered, unanswered, current }
-
+///
+/// 移植元 quiz.css の .quiz-navcell--* は「回答済み/未回答」と「現在地か」が
+/// 直交する 2 軸（現在地は枠強調のみで背景と共存する）。[answeredOf] と
+/// [currentIndex] を分けて渡すことでこれを再現する。
 class NumberGrid extends StatelessWidget {
   const NumberGrid({
     super.key,
     required this.count,
-    required this.stateOf,
+    required this.answeredOf,
     required this.onTap,
+    this.labelOf,
+    this.currentIndex,
   });
 
   final int count;
-  final NumberGridCellState Function(int index) stateOf;
+  final bool Function(int index) answeredOf;
   final void Function(int index) onTap;
+
+  /// セルに表示するラベル（実際の問番号など）。未指定時は index+1 を表示する。
+  final String Function(int index)? labelOf;
+
+  final int? currentIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -34,10 +43,10 @@ class NumberGrid extends StatelessWidget {
             mainAxisExtent: tokens.tap,
           ),
           itemBuilder: (context, index) {
-            final cellState = stateOf(index);
             return _NumberGridCell(
-              label: '${index + 1}',
-              state: cellState,
+              label: labelOf != null ? labelOf!(index) : '${index + 1}',
+              answered: answeredOf(index),
+              isCurrent: index == currentIndex,
               onTap: () => onTap(index),
             );
           },
@@ -50,12 +59,14 @@ class NumberGrid extends StatelessWidget {
 class _NumberGridCell extends StatelessWidget {
   const _NumberGridCell({
     required this.label,
-    required this.state,
+    required this.answered,
+    required this.isCurrent,
     required this.onTap,
   });
 
   final String label;
-  final NumberGridCellState state;
+  final bool answered;
+  final bool isCurrent;
   final VoidCallback onTap;
 
   @override
@@ -63,23 +74,14 @@ class _NumberGridCell extends StatelessWidget {
     final tokens = context.appTokens;
     final theme = Theme.of(context);
 
-    Color background;
-    Color foreground;
-    Color borderColor;
-    switch (state) {
-      case NumberGridCellState.answered:
-        background = tokens.ok;
-        foreground = tokens.onOk;
-        borderColor = tokens.ok;
-      case NumberGridCellState.unanswered:
-        background = tokens.none;
-        foreground = tokens.onNone;
-        borderColor = tokens.none;
-      case NumberGridCellState.current:
-        background = theme.colorScheme.surface;
-        foreground = theme.colorScheme.onSurface;
-        borderColor = theme.colorScheme.primary;
-    }
+    // 背景色は回答済み/未回答の軸、枠色は現在地の軸。移植元 quiz.css の
+    // .quiz-navcell--answered/--unanswered と .quiz-navcell--current は
+    // 独立して重ねがけされる（現在地は枠強調のみ）。
+    // 非現在地の既定枠は style.css の .grid-nums > * にある --border（全セル共通）。
+    final background = answered ? theme.colorScheme.primary : tokens.none;
+    final foreground = answered ? theme.colorScheme.onPrimary : tokens.onNone;
+    final borderColor = isCurrent ? theme.colorScheme.onSurface : tokens.border;
+    final borderWidth = isCurrent ? 2.0 : 1.0;
 
     return Material(
       color: background,
@@ -93,7 +95,7 @@ class _NumberGridCell extends StatelessWidget {
             minHeight: tokens.tap,
           ),
           decoration: BoxDecoration(
-            border: Border.all(color: borderColor, width: 1),
+            border: Border.all(color: borderColor, width: borderWidth),
             borderRadius: BorderRadius.circular(8),
           ),
           alignment: Alignment.center,

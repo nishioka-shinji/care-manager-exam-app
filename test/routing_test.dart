@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:care_manager_exam_app/app.dart';
+import 'package:care_manager_exam_app/routes.dart';
 import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:care_manager_exam_app/widgets/app_toast.dart';
 import 'package:care_manager_exam_app/widgets/confirm_sheet.dart';
@@ -26,7 +27,7 @@ void main() {
       find.byType(Navigator).first,
     );
 
-    navigator.pushNamed(App.routeResult, arguments: 'session-1');
+    navigator.pushNamed(Routes.result, arguments: 'session-1');
     await tester.pumpAndSettle();
     expect(find.text('結果 画面（プレースホルダ）'), findsOneWidget);
     expect(find.text('sessionId: session-1'), findsOneWidget);
@@ -35,7 +36,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('ホーム 画面（プレースホルダ）'), findsOneWidget);
 
-    navigator.pushNamed(App.routeHistory);
+    navigator.pushNamed(Routes.history);
     await tester.pumpAndSettle();
     expect(find.text('履歴 画面（プレースホルダ）'), findsOneWidget);
 

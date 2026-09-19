@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../app.dart';
+import '../../routes.dart';
 import '../../core/models/question.dart';
 import '../../core/models/session.dart';
 import '../../data/exam_repository.dart';
@@ -64,7 +64,7 @@ class _QuizScreenState extends State<QuizScreen> {
       _redirected = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        Navigator.of(context).pushReplacementNamed(App.routeHome);
+        Navigator.of(context).pushReplacementNamed(Routes.home);
       });
     }
   }
@@ -89,7 +89,7 @@ class _QuizScreenState extends State<QuizScreen> {
   Future<void> _finish() async {
     final id = await _controller.gradeAndFinish();
     if (id == null || !mounted) return;
-    Navigator.of(context).pushReplacementNamed(App.routeResult, arguments: id);
+    Navigator.of(context).pushReplacementNamed(Routes.result, arguments: id);
   }
 
   @override
@@ -170,7 +170,7 @@ class _LoadErrorScaffold extends StatelessWidget {
                 label: 'ホームへ戻る',
                 variant: AppButtonVariant.base,
                 onPressed: () =>
-                    Navigator.of(context).pushReplacementNamed(App.routeHome),
+                    Navigator.of(context).pushReplacementNamed(Routes.home),
               ),
             ],
           ),

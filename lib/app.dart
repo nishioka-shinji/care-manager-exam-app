@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'features/quiz/quiz_screen.dart';
+import 'routes.dart';
 import 'theme/app_theme.dart';
 import 'widgets/centered_body.dart';
 import 'widgets/footer_credit.dart';
@@ -15,11 +16,6 @@ class App extends StatelessWidget {
   const App({super.key, required this.appState});
 
   final AppState appState;
-
-  static const routeHome = '/';
-  static const routeQuiz = '/quiz';
-  static const routeResult = '/result';
-  static const routeHistory = '/history';
 
   @override
   Widget build(BuildContext context) {
@@ -42,23 +38,23 @@ class App extends StatelessWidget {
 
   static Route<dynamic> _onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
-      case routeQuiz:
+      case Routes.quiz:
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => const QuizScreen(),
         );
-      case routeResult:
+      case Routes.result:
         final sessionId = settings.arguments as String?;
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => ResultPlaceholderScreen(sessionId: sessionId),
         );
-      case routeHistory:
+      case Routes.history:
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => const HistoryPlaceholderScreen(),
         );
-      case routeHome:
+      case Routes.home:
       default:
         return MaterialPageRoute(
           settings: settings,
@@ -91,7 +87,7 @@ class HomePlaceholderScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const _PlaceholderScreen(title: 'ホーム', route: App.routeHome);
+    return const _PlaceholderScreen(title: 'ホーム', route: Routes.home);
   }
 }
 
@@ -104,7 +100,7 @@ class ResultPlaceholderScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return _PlaceholderScreen(
       title: '結果',
-      route: App.routeResult,
+      route: Routes.result,
       subtitle: sessionId == null ? null : 'sessionId: $sessionId',
     );
   }
@@ -115,7 +111,7 @@ class HistoryPlaceholderScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const _PlaceholderScreen(title: '履歴', route: App.routeHistory);
+    return const _PlaceholderScreen(title: '履歴', route: Routes.history);
   }
 }
 
@@ -142,19 +138,18 @@ class _PlaceholderScreen extends StatelessWidget {
           Text('$title 画面（プレースホルダ）'),
           if (subtitle != null) Text(subtitle!),
           const SizedBox(height: 16),
-          if (route != App.routeHome)
+          if (route != Routes.home)
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('戻る'),
             ),
-          if (route == App.routeHome) ...[
+          if (route == Routes.home) ...[
             TextButton(
-              onPressed: () => Navigator.of(context).pushNamed(App.routeQuiz),
+              onPressed: () => Navigator.of(context).pushNamed(Routes.quiz),
               child: const Text('演習へ'),
             ),
             TextButton(
-              onPressed: () =>
-                  Navigator.of(context).pushNamed(App.routeHistory),
+              onPressed: () => Navigator.of(context).pushNamed(Routes.history),
               child: const Text('履歴へ'),
             ),
           ],

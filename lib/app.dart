@@ -1,0 +1,86 @@
+import 'package:flutter/material.dart';
+
+import 'features/history/history_screen.dart';
+import 'features/home/home_screen.dart';
+import 'features/quiz/quiz_screen.dart';
+import 'features/result/result_screen.dart';
+import 'routes.dart';
+import 'theme/app_theme.dart';
+import 'widgets/centered_body.dart';
+
+/// アプリ全体の状態を持つ入れ物。exam / stats / sessions / current の保持は
+/// 後続タスクが埋める。このタスクでは ChangeNotifier の器だけ用意する。
+class AppState extends ChangeNotifier {}
+
+/// 素の Navigator + onGenerateRoute によるルーティング。
+/// go_router 等の外部パッケージは使わない方針（CLAUDE.md 依存方針）。
+class App extends StatelessWidget {
+  const App({super.key, required this.appState});
+
+  final AppState appState;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'ケアマネ過去問',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          themeMode: ThemeMode.system,
+          navigatorObservers: [routeObserver],
+          onGenerateRoute: _onGenerateRoute,
+          builder: (context, child) =>
+              AppShell(child: child ?? const SizedBox.shrink()),
+        );
+      },
+    );
+  }
+
+  static Route<dynamic> _onGenerateRoute(RouteSettings settings) {
+    switch (settings.name) {
+      case Routes.quiz:
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => const QuizScreen(),
+        );
+      case Routes.result:
+        final sessionId = settings.arguments as String?;
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => ResultScreen(sessionId: sessionId),
+        );
+      case Routes.history:
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => const HistoryScreen(),
+        );
+      case Routes.home:
+      default:
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => const HomeScreen(),
+        );
+    }
+  }
+}
+
+/// 画面本体を中央寄せするだけのシェル。フッタは常時固定のオーバーレイにせず
+/// [FooterCredit] として各画面がスクロール末尾に置く（移植元は</main>の後ろの
+/// 通常フロー要素であり、下部固定バーとは padding/margin で縦に逃げる関係）。
+///
+/// Navigator（= child）を Column 等で圧縮すると、配下の Scaffold/MediaQuery.size が
+/// 画面全体より縮んでしまい、Navigator が持つ Overlay（ConfirmSheet/AppToast の
+/// 表示先）も画面下端まで届かなくなる。そのため child をそのまま画面全体に渡す。
+class AppShell extends StatelessWidget {
+  const AppShell({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CenteredBody(child: child);
+  }
+}

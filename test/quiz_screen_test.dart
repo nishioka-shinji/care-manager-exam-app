@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:care_manager_exam_app/core/models/current_session.dart';
 import 'package:care_manager_exam_app/core/models/session.dart';
 import 'package:care_manager_exam_app/data/exam_repository.dart';
@@ -560,6 +562,383 @@ void main() {
       expect(materialColorOf(tester, '1'), tokens.ok);
       expect(materialColorOf(tester, '1'), isNot(theme.colorScheme.primary));
       expect(materialColorOf(tester, '1'), isNot(tokens.ng));
+    });
+  });
+
+  group('drill モード（一問一答）', () {
+    // exam-28.json: 1番は selectCount=2 answers=[3,4]、2番は selectCount=3
+    // answers=[1,2,3]、3番は selectCount=3 answers=[2,3,4]。
+
+    testWidgets('選択数未達なら revealCurrent は拒否され、revealed にも stats にも何も記録されない', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2, 3],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3],
+        },
+      );
+
+      final ok = await controller.revealCurrent(2);
+
+      expect(ok, isFalse);
+      expect(controller.isRevealed(1), isFalse);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('cme:stats'), isNull);
+      final raw = prefs.getString('cme:current');
+      expect(raw, isNot(contains('revealed')));
+    });
+
+    testWidgets(
+      '選択数到達で revealCurrent すると revealed が問番号昇順で永続化され、stats.attempts が1増える',
+      (tester) async {
+        final controller = await _buildController(
+          tester,
+          questionNos: const [1, 2, 3],
+          mode: QuizMode.drill,
+          answers: const {
+            1: [3, 4],
+          },
+        );
+
+        final ok = await controller.revealCurrent(2);
+
+        expect(ok, isTrue);
+        expect(controller.isRevealed(1), isTrue);
+
+        final prefs = await SharedPreferences.getInstance();
+        final currentRaw = prefs.getString('cme:current')!;
+        expect(currentRaw, contains('"revealed":[1]'));
+
+        final statsRaw = jsonDecode(prefs.getString('cme:stats')!) as Map;
+        final entry = (statsRaw[_examId] as Map)['1'] as Map;
+        expect(entry['attempts'], 1);
+        expect(entry['correct'], 1);
+      },
+    );
+
+    testWidgets('不正解を選択してrevealCurrentするとcorrectは0、lastCorrectはfalseになる', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [2],
+        mode: QuizMode.drill,
+        answers: const {
+          2: [1, 2, 4], // 2番の正解は[1,2,3]なので不正解
+        },
+      );
+
+      final ok = await controller.revealCurrent(3);
+
+      expect(ok, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      final statsRaw = jsonDecode(prefs.getString('cme:stats')!) as Map;
+      final entry = (statsRaw[_examId] as Map)['2'] as Map;
+      expect(entry['attempts'], 1);
+      expect(entry['correct'], 0);
+      expect(entry['lastCorrect'], isFalse);
+    });
+
+    testWidgets('答え合わせ済みの問に再度revealCurrentしても拒否され、attemptsは1のまま', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+
+      final first = await controller.revealCurrent(2);
+      final second = await controller.revealCurrent(2);
+
+      expect(first, isTrue);
+      expect(second, isFalse);
+
+      final prefs = await SharedPreferences.getInstance();
+      final statsRaw = jsonDecode(prefs.getString('cme:stats')!) as Map;
+      final entry = (statsRaw[_examId] as Map)['1'] as Map;
+      expect(entry['attempts'], 1);
+    });
+
+    testWidgets('答え合わせした問の後にgoToしてもrevealedが消えず、新しいcontrollerでloadしても復元される', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2, 3],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+
+      await controller.revealCurrent(2);
+      await controller.goTo(1);
+
+      final prefs = await SharedPreferences.getInstance();
+      final currentRaw = prefs.getString('cme:current')!;
+      expect(currentRaw, contains('"revealed":[1]'));
+
+      final storage = StorageRepository();
+      await storage.init();
+      final reloaded = QuizController(
+        examRepository: ExamRepository(),
+        storageRepository: storage,
+      );
+      await tester.runAsync(() => reloaded.load());
+
+      expect(reloaded.isRevealed(1), isTrue);
+    });
+
+    testWidgets('答え合わせした問の後に別の問をtoggleChoiceしてもrevealedがcme:currentに残る', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2, 3],
+        mode: QuizMode.drill,
+        cursor: 1,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await controller.goTo(0);
+      await controller.revealCurrent(2);
+      await controller.goTo(1);
+
+      controller.toggleChoice(2, 1, 3);
+
+      final prefs = await SharedPreferences.getInstance();
+      final currentRaw = prefs.getString('cme:current')!;
+      expect(currentRaw, contains('"revealed":[1]'));
+    });
+
+    testWidgets('答え合わせした問が複数のときrevealedは問番号昇順で永続化される', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2, 3],
+        mode: QuizMode.drill,
+        cursor: 1,
+        answers: const {
+          1: [3, 4],
+          2: [1, 2, 3],
+        },
+      );
+      await controller.goTo(0);
+      await controller.revealCurrent(2);
+      await controller.goTo(1);
+      final ok = await controller.revealCurrent(3);
+
+      expect(ok, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      final currentRaw = prefs.getString('cme:current')!;
+      expect(currentRaw, contains('"revealed":[1,2]'));
+    });
+
+    testWidgets('二重計上しない: 3問中2問を答え合わせしてfinishDrillしてもattemptsは1のまま', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2, 3],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4], // 正解
+          2: [1, 2, 4], // 不正解
+        },
+      );
+
+      await controller.goTo(0);
+      await controller.revealCurrent(2);
+      await controller.goTo(1);
+      await controller.revealCurrent(3);
+
+      final result = await controller.finishDrill();
+      expect(result.id, isNotNull);
+      expect(result.noRevealed, isFalse);
+
+      final prefs = await SharedPreferences.getInstance();
+      final statsRaw = jsonDecode(prefs.getString('cme:stats')!) as Map;
+      final bucket = statsRaw[_examId] as Map;
+      expect((bucket['1'] as Map)['attempts'], 1);
+      expect((bucket['2'] as Map)['attempts'], 1);
+    });
+
+    testWidgets('部分採点: 3問中2問だけ答え合わせしてfinishDrillするとscore.maxは2、1問正解ならtotalは1', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2, 3],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4], // 正解
+          2: [1, 2, 4], // 不正解
+        },
+      );
+
+      await controller.goTo(0);
+      await controller.revealCurrent(2);
+      await controller.goTo(1);
+      await controller.revealCurrent(3);
+
+      final result = await controller.finishDrill();
+      expect(result.id, isNotNull);
+      expect(result.noRevealed, isFalse);
+
+      final storage = StorageRepository();
+      await storage.init();
+      final session = storage.getSessionById(result.id!)!;
+      expect(session.score.max, 2);
+      expect(session.score.total, 1);
+    });
+
+    testWidgets('0件でfinishDrillしてもsessionが作られず、cme:currentも消えない', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2, 3],
+        mode: QuizMode.drill,
+      );
+
+      final result = await controller.finishDrill();
+
+      expect(result.id, isNull);
+      expect(result.noRevealed, isTrue);
+
+      final storage = StorageRepository();
+      await storage.init();
+      expect(storage.loadSessions(), isEmpty);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('cme:current'), isNotNull);
+    });
+
+    testWidgets('2回目のfinishDrillは採点済みでnullだが、0件（noRevealed）とは区別される', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await controller.revealCurrent(2);
+
+      final first = await controller.finishDrill();
+      expect(first.id, isNotNull);
+      expect(first.noRevealed, isFalse);
+
+      final second = await controller.finishDrill();
+      expect(second.id, isNull);
+      expect(second.noRevealed, isFalse);
+    });
+
+    testWidgets('答え合わせ済みの問でtoggleChoiceが拒否される', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await controller.revealCurrent(2);
+
+      final result = controller.toggleChoice(1, 3, 2);
+
+      expect(result, isFalse);
+      expect(controller.selectionOf(1).value, {3, 4});
+    });
+
+    testWidgets('中断・再開: revealed入りのcme:currentからloadするとisRevealedが復元される', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageRepository();
+      await storage.init();
+      await storage.saveCurrent(
+        CurrentSession(
+          examId: _examId,
+          mode: QuizMode.drill,
+          startedAt: '2026-09-19T00:00:00.000Z',
+          questionNos: const [1, 2, 3],
+          cursor: 0,
+          answers: const {
+            1: [3, 4],
+          },
+          revealed: const [1],
+        ),
+      );
+      final controller = QuizController(
+        examRepository: ExamRepository(),
+        storageRepository: storage,
+      );
+
+      await tester.runAsync(() => controller.load());
+
+      expect(controller.isRevealed(1), isTrue);
+      expect(controller.isRevealed(2), isFalse);
+      expect(controller.isCurrentRevealed, isTrue);
+    });
+
+    testWidgets('full/reviewモードではrevealCurrentは常に拒否される（回帰防止）', (tester) async {
+      final controllerFull = await _buildController(
+        tester,
+        questionNos: const [1],
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      expect(await controllerFull.revealCurrent(2), isFalse);
+      expect(controllerFull.isCurrentRevealed, isFalse);
+
+      final controllerReview = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.review,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      expect(await controllerReview.revealCurrent(2), isFalse);
+      expect(controllerReview.isCurrentRevealed, isFalse);
+    });
+
+    testWidgets('full/reviewモードの既存挙動は変わらない: gradeAndFinishが引数なしで出題全件を採点する', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2],
+        answers: const {
+          1: [3, 4],
+        },
+      );
+
+      final id = await controller.gradeAndFinish();
+      expect(id, isNotNull);
+
+      final storage = StorageRepository();
+      await storage.init();
+      final session = storage.getSessionById(id!)!;
+      expect(session.score.max, 2);
+
+      final statsRaw = jsonDecode(
+        (await SharedPreferences.getInstance()).getString('cme:stats')!,
+      );
+      final bucket = (statsRaw as Map)[_examId] as Map;
+      expect(bucket.containsKey('1'), isTrue);
+      expect(bucket.containsKey('2'), isTrue);
     });
   });
 }

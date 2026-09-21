@@ -8,6 +8,7 @@ import '../../../theme/app_tokens.dart';
 import '../../../widgets/app_badge.dart';
 import '../../../widgets/app_card.dart';
 import '../../../widgets/footer_credit.dart';
+import '../../../widgets/result_mark.dart';
 
 /// 問ごとの解説カード。移植元 result.js の buildExplanationBlock 相当。
 /// 選択肢ごとに「正解」「あなたの回答」マークと解説文を出し、末尾に出典を
@@ -162,9 +163,9 @@ class _ChoiceRow extends StatelessWidget {
                             ),
                           ),
                           if (isAnswer)
-                            const _ResultMark(label: '正解', isAnswer: true),
+                            const ResultMark(label: '正解', isAnswer: true),
                           if (isSelected)
-                            const _ResultMark(label: 'あなたの回答', isAnswer: false),
+                            const ResultMark(label: 'あなたの回答', isAnswer: false),
                         ],
                       ),
                       const SizedBox(height: 6),
@@ -178,38 +179,6 @@ class _ChoiceRow extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 移植元 .result-mark--answer / --selected 相当。WCAG AA を満たす配色の
-/// ため塗りつぶし背景 + on* トークンの濃色文字にする（style.css の badge と同型）。
-class _ResultMark extends StatelessWidget {
-  const _ResultMark({required this.label, required this.isAnswer});
-
-  final String label;
-  final bool isAnswer;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.appTokens;
-    final theme = Theme.of(context);
-    final background = isAnswer ? tokens.ok : theme.colorScheme.primary;
-    final foreground = isAnswer ? tokens.onOk : theme.colorScheme.onPrimary;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: foreground,
-          fontSize: 11.5,
-          fontWeight: FontWeight.w700,
         ),
       ),
     );

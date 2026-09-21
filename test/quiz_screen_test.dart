@@ -6,10 +6,13 @@ import 'package:care_manager_exam_app/data/exam_repository.dart';
 import 'package:care_manager_exam_app/data/storage_repository.dart';
 import 'package:care_manager_exam_app/features/quiz/quiz_controller.dart';
 import 'package:care_manager_exam_app/features/quiz/quiz_screen.dart';
+import 'package:care_manager_exam_app/features/quiz/widgets/choice_tile.dart';
 import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:care_manager_exam_app/theme/app_tokens.dart';
 import 'package:care_manager_exam_app/widgets/app_badge.dart';
+import 'package:care_manager_exam_app/widgets/app_button.dart';
 import 'package:care_manager_exam_app/widgets/number_grid.dart';
+import 'package:care_manager_exam_app/widgets/result_mark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -939,6 +942,293 @@ void main() {
       final bucket = (statsRaw as Map)[_examId] as Map;
       expect(bucket.containsKey('1'), isTrue);
       expect(bucket.containsKey('2'), isTrue);
+    });
+  });
+
+  group('drill モードの演習画面UI', () {
+    // exam-28.json 24番: selectCount=2 answers=[2,3]、本文219文字の長文問題。
+    // 1番: selectCount=2 answers=[3,4]。3番: selectCount=3 answers=[2,3,4]。
+
+    testWidgets('答え合わせボタン押下でスクロール位置が変わらず、設問切替でのみ先頭へ戻る', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [_longQuestionNo, 1],
+        mode: QuizMode.drill,
+        answers: const {
+          _longQuestionNo: [2, 3],
+        },
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      final scrollable = find.byType(Scrollable).first;
+      await tester.drag(scrollable, const Offset(0, -400));
+      await tester.pumpAndSettle();
+
+      final scrollableState = tester.state<ScrollableState>(scrollable);
+      final offsetBefore = scrollableState.position.pixels;
+      expect(offsetBefore, greaterThan(0));
+
+      await tester.tap(find.text('答え合わせ'));
+      await tester.pump();
+
+      expect(scrollableState.position.pixels, offsetBefore);
+
+      await tester.tap(find.text('次の問題へ'));
+      await tester.pumpAndSettle();
+
+      expect(scrollableState.position.pixels, 0);
+    });
+
+    testWidgets('答え合わせボタン押下では問題文（_QuizBody）が作り直されない', (tester) async {
+      // ScrollController.offset は同一インスタンスなら Widget 再構築だけでは
+      // リセットされないため、上のスクロールテストだけでは「_QuizBody が
+      // 作り直されていないか」を検出できない。問題文 Text の Widget
+      // インスタンスの identical 比較で、_QuizBody が再構築されていないこと
+      // を直接見る（ChoiceTile 自体はフィードバック反映のため作り直されて
+      // よい。作り直してはいけないのは _ChoiceList の外側）。
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      final questionTextFinder = find.text(controller.currentQuestion!.text);
+      final textBefore = tester.widget<Text>(questionTextFinder);
+
+      await tester.tap(find.text('答え合わせ'));
+      await tester.pump();
+
+      final textAfter = tester.widget<Text>(questionTextFinder);
+      expect(identical(textBefore, textAfter), isTrue);
+    });
+
+    testWidgets('選択数未達では答え合わせが非活性、到達すると活性になる', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      AppButton buttonOf(String label) =>
+          tester.widget<AppButton>(find.widgetWithText(AppButton, label));
+
+      expect(buttonOf('答え合わせ').onPressed, isNull);
+
+      await tester.tap(find.text('3').first);
+      await tester.pump();
+      expect(buttonOf('答え合わせ').onPressed, isNull);
+
+      await tester.tap(find.text('4').first);
+      await tester.pump();
+      expect(buttonOf('答え合わせ').onPressed, isNotNull);
+    });
+
+    testWidgets('答え合わせで正誤バッジ・正解番号・選択肢のマークと解説が出る', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('正解'), findsNothing);
+
+      await tester.tap(find.text('答え合わせ'));
+      await tester.pump();
+
+      // 1番の正解は選択肢3・4の2件のみ（1,2,5は不正解）。件数まで見ないと
+      // 表示条件の反転（不正解側に付く）を見逃す。ResultMark で絞り込み、
+      // AppBadge（正誤バッジ）の「正解」ラベルと混同しないようにする。
+      expect(find.widgetWithText(ResultMark, '正解'), findsNWidgets(2));
+      expect(find.textContaining('正解は 3・4'), findsOneWidget);
+      expect(find.widgetWithText(ResultMark, 'あなたの回答'), findsNWidgets(2));
+      expect(find.textContaining('社会保険は、保険料を納めて加入者が給付を'), findsOneWidget);
+
+      // バナー（正解は…）が問題文と選択肢リストの間にあること（移植元
+      // quiz.js:96-103 の DOM 順）。座標比較なら本番の Widget 構造を
+      // 書き写さずに済む。選択肢1件目は「1.」の丸数字バッジで特定する。
+      final questionY = tester
+          .getTopLeft(find.text(controller.currentQuestion!.text))
+          .dy;
+      final bannerY = tester.getTopLeft(find.textContaining('正解は 3・4')).dy;
+      final firstChoiceY = tester.getTopLeft(find.text('1').first).dy;
+      expect(bannerY, greaterThan(questionY));
+      expect(bannerY, lessThan(firstChoiceY));
+    });
+
+    testWidgets('答え合わせ後は選択肢のInkWellが無効化されタップしても選択もトーストも変わらない', (tester) async {
+      // controller.toggleChoice の isRevealed ガードだけでも
+      // selectionOf の値は満たせてしまう（QuizController 側の担保）ため、
+      // ここでは ChoiceTile 側の onTap: revealed ? null : onTap が
+      // 実際に外れていることを直接見る。トーストが出ないことも検証する
+      // （UI ガードが外れると「2つまで選べます」という文脈外のトーストが
+      // 答え合わせ後の選択肢タップで出てしまう）。
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('答え合わせ'));
+      await tester.pump();
+
+      final firstTile = find.byType(ChoiceTile).first;
+      final inkWell = tester.widget<InkWell>(
+        find.descendant(of: firstTile, matching: find.byType(InkWell)).first,
+      );
+      expect(inkWell.onTap, isNull);
+
+      await tester.tap(find.text('1').first);
+      await tester.pump();
+
+      expect(controller.selectionOf(1).value, {3, 4});
+      expect(find.text('2つまで選べます'), findsNothing);
+
+      // AppToast 内部の Future.delayed のタイマーを消化してから終える。
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('答え合わせ後は下部バーが次の問題へに変わり、最後の問では結果を見るになる', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('次へ'), findsOneWidget);
+      expect(find.text('採点する'), findsNothing);
+
+      await tester.tap(find.text('答え合わせ'));
+      await tester.pump();
+
+      expect(find.text('答え合わせ'), findsNothing);
+      expect(find.text('次の問題へ'), findsNothing);
+      expect(find.text('結果を見る'), findsOneWidget);
+
+      await tester.tap(find.text('結果を見る'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('result:'), findsOneWidget);
+    });
+
+    testWidgets('答え合わせ後、最後の問でなければ次の問題への遷移で先頭問へ戻れる', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 3],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('答え合わせ'));
+      await tester.pump();
+
+      expect(find.text('次の問題へ'), findsOneWidget);
+      expect(find.text('結果を見る'), findsNothing);
+
+      await tester.tap(find.text('次の問題へ'));
+      await tester.pumpAndSettle();
+
+      expect(controller.cursorIndex, 1);
+    });
+
+    testWidgets('前の問へ戻ると答え合わせ済みの解説表示状態で復帰する', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 3],
+        mode: QuizMode.drill,
+        cursor: 1,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await controller.goTo(0);
+      await controller.revealCurrent(2);
+      await controller.goTo(1);
+
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('答え合わせ'), findsOneWidget);
+
+      await tester.tap(find.text('前へ'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('正解'), findsWidgets);
+      expect(find.textContaining('正解は 3・4'), findsOneWidget);
+      expect(find.text('答え合わせ'), findsNothing);
+    });
+
+    testWidgets('drillのsubtitleは一問一答になる', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('一問一答'), findsOneWidget);
+      expect(find.text('本番通し'), findsNothing);
+      expect(find.text('復習モード'), findsNothing);
+    });
+
+    testWidgets('full（本番通し）では答え合わせボタンもフィードバックも一切出ない（回帰防止）', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('答え合わせ'), findsNothing);
+      expect(find.text('本番通し'), findsOneWidget);
+      expect(find.textContaining('正解は'), findsNothing);
+    });
+
+    testWidgets('review（復習モード）では答え合わせボタンもフィードバックも一切出ない（回帰防止）', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.review,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('答え合わせ'), findsNothing);
+      expect(find.text('復習モード'), findsOneWidget);
+      expect(find.textContaining('正解は'), findsNothing);
     });
   });
 }

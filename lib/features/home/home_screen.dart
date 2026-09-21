@@ -287,7 +287,7 @@ class _ExamCard extends StatelessWidget {
   }
 }
 
-/// 「本番通し60問を解く」「間違えた問題を復習（n問）」の2ボタン。
+/// 「本番通し60問を解く」「一問一答で解く」「間違えた問題を復習（n問）」の3ボタン。
 class _StartButtons extends StatelessWidget {
   const _StartButtons({
     required this.exam,
@@ -311,6 +311,18 @@ class _StartButtons extends StatelessWidget {
           label: '本番通し60問を解く',
           variant: AppButtonVariant.primary,
           onPressed: () => onStart(QuizMode.full, questionNos),
+        ),
+        const SizedBox(height: 10),
+        // 移植元は title 属性（ホバー）に説明を逃がす。可視テキストは
+        // 年度カードの縦の嵩を増やすため意図的に避けている（home.js:322-324）。
+        Semantics(
+          hint: '1問ごとに答え合わせをして、その場で解説を読みながら進みます',
+          child: AppButton(
+            label: '一問一答で解く',
+            onPressed: questionNos.isEmpty
+                ? null
+                : () => onStart(QuizMode.drill, questionNos),
+          ),
         ),
         const SizedBox(height: 10),
         AppButton(

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/models/session.dart';
+import '../../../core/scoring.dart';
 import '../../../widgets/app_button.dart';
 import '../../../widgets/number_grid.dart';
 import '../quiz_controller.dart';
@@ -11,7 +13,13 @@ import '../quiz_controller.dart';
 class AnswerSheet {
   AnswerSheet._();
 
-  static Future<void> show(BuildContext context, QuizController controller) {
+  /// [onFinishDrill] は一問一答モードの「ここまでの結果を見る」用。
+  /// 移植元 quiz.js:638-641 と同じく、シートを閉じてから呼ぶ。
+  static Future<void> show(
+    BuildContext context,
+    QuizController controller, {
+    VoidCallback? onFinishDrill,
+  }) {
     final completer = Completer<void>();
     final overlay = Overlay.of(context, rootOverlay: true);
     late OverlayEntry entry;
@@ -29,6 +37,12 @@ class AnswerSheet {
           controller.goTo(index);
           close();
         },
+        onFinishDrill: onFinishDrill == null
+            ? null
+            : () {
+                close();
+                onFinishDrill();
+              },
       ),
     );
 
@@ -42,11 +56,13 @@ class _AnswerSheetOverlay extends StatefulWidget {
     required this.controller,
     required this.onClose,
     required this.onJump,
+    required this.onFinishDrill,
   });
 
   final QuizController controller;
   final VoidCallback onClose;
   final void Function(int index) onJump;
+  final VoidCallback? onFinishDrill;
 
   @override
   State<_AnswerSheetOverlay> createState() => _AnswerSheetOverlayState();
@@ -69,7 +85,9 @@ class _AnswerSheetOverlayState extends State<_AnswerSheetOverlay>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final screenHeight = MediaQuery.of(context).size.height;
-    final questionNos = widget.controller.questionNos;
+    final controller = widget.controller;
+    final questionNos = controller.questionNos;
+    final isDrill = controller.mode == QuizMode.drill;
 
     return AnimatedBuilder(
       animation: _controller,
@@ -121,19 +139,28 @@ class _AnswerSheetOverlayState extends State<_AnswerSheetOverlay>
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'タップした問題へ移動します。グレーは未回答です。',
+                            isDrill
+                                ? 'タップした問題へ移動します。緑は正解・赤は不正解・グレーはまだ答え合わせしていない問題です。'
+                                : 'タップした問題へ移動します。グレーは未回答です。',
                             style: theme.textTheme.bodySmall,
                           ),
                           const SizedBox(height: 14),
                           NumberGrid(
                             count: questionNos.length,
                             labelOf: (index) => '${questionNos[index]}',
-                            answeredOf: (index) => widget.controller.isAnswered(
-                              questionNos[index],
-                            ),
-                            currentIndex: widget.controller.cursorIndex,
+                            cellStatusOf: (index) =>
+                                _cellStatusOf(controller, questionNos[index]),
+                            currentIndex: controller.cursorIndex,
                             onTap: widget.onJump,
                           ),
+                          if (isDrill && widget.onFinishDrill != null) ...[
+                            const SizedBox(height: 14),
+                            AppButton(
+                              label: 'ここまでの結果を見る',
+                              variant: AppButtonVariant.primary,
+                              onPressed: widget.onFinishDrill,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -146,4 +173,22 @@ class _AnswerSheetOverlayState extends State<_AnswerSheetOverlay>
       },
     );
   }
+}
+
+/// グリッド1セル分の状態判定。移植元 quiz.js:455-470 の openSheet と同じ:
+/// 答え合わせ済み（drill）は正誤、それ以外は回答済み/未回答の2値で塗る。
+CellStatus _cellStatusOf(QuizController controller, int no) {
+  final answered = controller.isAnswered(no);
+  if (controller.mode == QuizMode.drill && controller.isRevealed(no)) {
+    List<int> answers = const [];
+    for (final q in controller.exam?.questions ?? const []) {
+      if (q.no == no) {
+        answers = q.answers;
+        break;
+      }
+    }
+    final selected = controller.selectionOf(no).value.toList()..sort();
+    return isCorrect(selected, answers) ? CellStatus.ok : CellStatus.ng;
+  }
+  return answered ? CellStatus.answered : CellStatus.none;
 }

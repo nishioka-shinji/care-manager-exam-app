@@ -6,6 +6,7 @@ import 'package:care_manager_exam_app/data/exam_repository.dart';
 import 'package:care_manager_exam_app/data/storage_repository.dart';
 import 'package:care_manager_exam_app/features/quiz/quiz_controller.dart';
 import 'package:care_manager_exam_app/features/quiz/quiz_screen.dart';
+import 'package:care_manager_exam_app/features/quiz/widgets/answer_sheet.dart';
 import 'package:care_manager_exam_app/features/quiz/widgets/choice_tile.dart';
 import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:care_manager_exam_app/theme/app_tokens.dart';
@@ -1229,6 +1230,319 @@ void main() {
       expect(find.text('答え合わせ'), findsNothing);
       expect(find.text('復習モード'), findsOneWidget);
       expect(find.textContaining('正解は'), findsNothing);
+    });
+  });
+
+  group('回答状況シート（drill対応）', () {
+    // exam-28.json: 1番 selectCount=2 answers=[3,4]、2番 selectCount=3
+    // answers=[1,2,3]、3番 selectCount=3 answers=[2,3,4]。
+
+    testWidgets('drillでは説明文が差し替わり、full/reviewでは従来文言のまま', (tester) async {
+      final drillController = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: drillController)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('回答状況'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('タップした問題へ移動します。緑は正解・赤は不正解・グレーはまだ答え合わせしていない問題です。'),
+        findsOneWidget,
+      );
+      expect(find.text('タップした問題へ移動します。グレーは未回答です。'), findsNothing);
+    });
+
+    testWidgets('fullでは従来文言のまま', (tester) async {
+      final controller = await _buildController(tester, questionNos: const [1]);
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('回答状況'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('タップした問題へ移動します。グレーは未回答です。'), findsOneWidget);
+      expect(
+        find.text('タップした問題へ移動します。緑は正解・赤は不正解・グレーはまだ答え合わせしていない問題です。'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('答え合わせ済みの正解問は緑、不正解問は赤、未答え合わせの回答済みはaccent、未回答はグレー', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2, 3],
+        mode: QuizMode.drill,
+        cursor: 1,
+        answers: const {
+          1: [3, 4], // 正解、答え合わせ済み
+          2: [1, 2, 4], // 不正解、答え合わせ済み
+          3: [2, 3], // 回答済みだが答え合わせしていない（selectCount未達で保存）
+        },
+      );
+      await controller.goTo(0);
+      await controller.revealCurrent(2);
+      await controller.goTo(1);
+      await controller.revealCurrent(3);
+      await controller.goTo(2);
+
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('回答状況'));
+      await tester.pumpAndSettle();
+
+      Color materialColorOf(String label) {
+        final material = tester.widget<Material>(
+          find
+              .ancestor(
+                of: find.descendant(
+                  of: find.byType(NumberGrid),
+                  matching: find.text(label),
+                ),
+                matching: find.byType(Material),
+              )
+              .first,
+        );
+        return material.color!;
+      }
+
+      final theme = AppTheme.light;
+      final tokens = theme.extension<AppTokens>()!;
+
+      expect(materialColorOf('1'), tokens.ok);
+      expect(materialColorOf('2'), tokens.ng);
+      expect(materialColorOf('3'), theme.colorScheme.primary);
+    });
+
+    testWidgets('drillでは「ここまでの結果を見る」が出る', (tester) async {
+      final drillController = await _buildController(
+        tester,
+        questionNos: const [1, 2],
+        mode: QuizMode.drill,
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: drillController)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('回答状況'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ここまでの結果を見る'), findsOneWidget);
+    });
+
+    testWidgets('fullでは「ここまでの結果を見る」が出ない', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2],
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('回答状況'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ここまでの結果を見る'), findsNothing);
+    });
+
+    testWidgets('reviewでは「ここまでの結果を見る」が出ない', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2],
+        mode: QuizMode.review,
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('回答状況'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ここまでの結果を見る'), findsNothing);
+    });
+
+    testWidgets('「ここまでの結果を見る」押下でシートを閉じてから結果画面へ遷移し、母数が答え合わせ済みの件数になる', (
+      tester,
+    ) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2, 3],
+        mode: QuizMode.drill,
+        cursor: 1,
+        answers: const {
+          1: [3, 4], // 正解、答え合わせ済み
+          2: [1, 2, 4], // 不正解、答え合わせ済み
+        },
+      );
+      await controller.goTo(0);
+      await controller.revealCurrent(2);
+      await controller.goTo(1);
+      await controller.revealCurrent(3);
+
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('回答状況'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('ここまでの結果を見る'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('result:'), findsOneWidget);
+
+      final storage = StorageRepository();
+      await storage.init();
+      final id =
+          find.textContaining('result:').evaluate().single.widget as Text;
+      final sessionId = id.data!.substring('result:'.length);
+      final session = storage.getSessionById(sessionId)!;
+      expect(session.score.max, 2);
+    });
+
+    testWidgets('「ここまでの結果を見る」でfinishDrillが呼ばれ、シートも閉じる', (tester) async {
+      // AnswerSheet.show を直接呼び、onFinishDrill が実際に呼ばれることと
+      // シートが最終的に閉じることを確認する。close() と onFinishDrill() の
+      // 呼び出し順序そのものは、finishDrill 内部の await がテスト環境では
+      // 同期的に解決されてしまうため widget テストでは判別できない
+      // （T7報告の懸念事項を参照。実装は移植元 quiz.js:638-641 と同じ
+      // close() → onFinishDrill() の順を維持する）。
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await controller.revealCurrent(2);
+
+      final calls = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: AppButton(
+                  label: 'open',
+                  variant: AppButtonVariant.base,
+                  onPressed: () => AnswerSheet.show(
+                    context,
+                    controller,
+                    onFinishDrill: () => calls.add('finishDrill'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ここまでの結果を見る'));
+      await tester.pumpAndSettle();
+
+      expect(calls, ['finishDrill']);
+      expect(find.byType(NumberGrid), findsNothing);
+      expect(find.text('閉じる'), findsNothing);
+    });
+
+    testWidgets('答え合わせ0件で「ここまでの結果を見る」を押してもトーストが出るだけで遷移しない', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2],
+        mode: QuizMode.drill,
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('回答状況'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('ここまでの結果を見る'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('まず1問以上、答え合わせをしてください'), findsOneWidget);
+      expect(find.textContaining('result:'), findsNothing);
+
+      // AppToast 内部の Future.delayed のタイマーを消化してから終える。
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('二重送信（採点済みで下部バーの結果を見るを連打）ではトーストが出ない', (tester) async {
+      // _handleFinishDrill を経由させ、id: null（二重送信）と
+      // noRevealed: true（0件）の取り違えを実際のハンドラで検出する。
+      // controller.finishDrill() を直接呼ぶだけではハンドラ内のロジックの
+      // バグ（id==nullでトーストを出す誤り）を検出できない。onPressed を
+      // 直接2回呼び、1回目の非同期処理が終わる前に2回目を送る連打を再現する
+      // （tester.tap の連続呼び出しは1回目のジェスチャー処理待ちで
+      // ヒットテストに失敗するため使えない）。
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await controller.revealCurrent(2);
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      final onPressed = tester
+          .widget<AppButton>(find.widgetWithText(AppButton, '結果を見る'))
+          .onPressed!;
+      onPressed();
+      onPressed();
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('result:'), findsOneWidget);
+      expect(find.text('まず1問以上、答え合わせをしてください'), findsNothing);
+    });
+
+    testWidgets('drillで未回答があっても採点する（結果を見る）で確認シートが出ない', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 3],
+        mode: QuizMode.drill,
+        answers: const {
+          1: [3, 4],
+        },
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('答え合わせ'));
+      await tester.pump();
+
+      expect(find.text('結果を見る'), findsNothing);
+
+      await tester.tap(find.text('次の問題へ'));
+      await tester.pumpAndSettle();
+
+      // 3番は未回答のまま。「結果を見る」は出ないが、回答状況シートの
+      // 「ここまでの結果を見る」から未回答確認シートを挟まずに遷移できる。
+      await tester.tap(find.text('回答状況'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ここまでの結果を見る'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('採点確認'), findsNothing);
+      expect(find.textContaining('未回答が'), findsNothing);
+      expect(find.textContaining('result:'), findsOneWidget);
+    });
+
+    testWidgets('full/reviewでは未回答確認シートが出ること（既存挙動の回帰防止）', (tester) async {
+      final controller = await _buildController(
+        tester,
+        questionNos: const [1, 2],
+      );
+      await tester.pumpWidget(_wrap(QuizScreen(controller: controller)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('採点する'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('未回答が2問あります'), findsOneWidget);
+      expect(find.textContaining('result:'), findsNothing);
     });
   });
 }

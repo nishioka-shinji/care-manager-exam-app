@@ -125,6 +125,8 @@ class StorageRepository {
   }
 
   /// stats エントリ（{attempts,correct,lastCorrect,...}）の形をしているか。
+  /// 移植元 storage.js は `typeof === 'number'` で数値全般（2.0 等）を許すが、
+  /// Dart 側は自身が int しか書かないため int 限定にしている。
   bool _isStatsEntry(dynamic value) {
     if (!_isPlainMap(value)) return false;
     final map = value as Map<String, dynamic>;

@@ -28,6 +28,25 @@ class CurrentSession {
   final Map<int, List<int>> answers;
   final List<int> revealed;
 
+  /// 一部フィールドだけを差し替えた複製を作る。[revealed] は既定値が
+  /// `const []` のため、指定し忘れると空で上書きされる（F1参照）。
+  /// 呼び出し側はこの copyWith を経由し、フィールドを直接列挙しないこと。
+  CurrentSession copyWith({
+    int? cursor,
+    Map<int, List<int>>? answers,
+    List<int>? revealed,
+  }) {
+    return CurrentSession(
+      examId: examId,
+      mode: mode,
+      startedAt: startedAt,
+      questionNos: questionNos,
+      cursor: cursor ?? this.cursor,
+      answers: answers ?? this.answers,
+      revealed: revealed ?? this.revealed,
+    );
+  }
+
   factory CurrentSession.fromJson(Map<String, dynamic> json) {
     final rawRevealed = json['revealed'];
     return CurrentSession(

@@ -333,7 +333,11 @@ class _QuizBody extends StatelessWidget {
                   AppButton(
                     label: '回答状況',
                     variant: AppButtonVariant.base,
-                    onPressed: () => AnswerSheet.show(context, controller),
+                    onPressed: () => AnswerSheet.show(
+                      context,
+                      controller,
+                      onFinishDrill: onFinishDrill,
+                    ),
                   ),
                 ],
               ),

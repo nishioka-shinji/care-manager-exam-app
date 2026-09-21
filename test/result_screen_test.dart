@@ -8,6 +8,7 @@ import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:care_manager_exam_app/theme/app_tokens.dart';
 import 'package:care_manager_exam_app/widgets/app_button.dart';
 import 'package:care_manager_exam_app/widgets/footer_credit.dart';
+import 'package:care_manager_exam_app/widgets/result_mark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -330,6 +331,46 @@ void main() {
 
     expect(find.text('正解'), findsWidgets);
     expect(find.text('あなたの回答'), findsWidgets);
+
+    // ResultMark は演習画面（drill）と共有しているため、drill 側の都合で
+    // 色・サイズが変わっても結果画面が巻き添えで壊れることを検出できるよう
+    // トークンと数値の両方を固定する。
+    final theme = AppTheme.light;
+    final tokens = theme.extension<AppTokens>()!;
+
+    final answerMarkFinder = find.widgetWithText(ResultMark, '正解');
+    final answerContainer = tester.widget<Container>(
+      find
+          .descendant(of: answerMarkFinder, matching: find.byType(Container))
+          .first,
+    );
+    final answerDecoration = answerContainer.decoration! as BoxDecoration;
+    expect(answerDecoration.color, tokens.ok);
+    final answerText = tester.widget<Text>(
+      find.descendant(of: answerMarkFinder, matching: find.byType(Text)).first,
+    );
+    expect(answerText.style!.color, tokens.onOk);
+    expect(answerText.style!.fontSize, 11.5);
+    expect(
+      answerContainer.padding,
+      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    );
+
+    final selectedMarkFinder = find.widgetWithText(ResultMark, 'あなたの回答');
+    final selectedContainer = tester.widget<Container>(
+      find
+          .descendant(of: selectedMarkFinder, matching: find.byType(Container))
+          .first,
+    );
+    final selectedDecoration = selectedContainer.decoration! as BoxDecoration;
+    expect(selectedDecoration.color, theme.colorScheme.primary);
+    final selectedText = tester.widget<Text>(
+      find
+          .descendant(of: selectedMarkFinder, matching: find.byType(Text))
+          .first,
+    );
+    expect(selectedText.style!.color, theme.colorScheme.onPrimary);
+    expect(selectedText.style!.fontSize, 11.5);
   });
 
   testWidgets('出典が媒体名のみのテキストとして表示され、リンクになっていない', (tester) async {

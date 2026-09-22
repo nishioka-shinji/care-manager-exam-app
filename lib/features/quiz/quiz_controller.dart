@@ -137,9 +137,12 @@ class QuizController extends ChangeNotifier {
     }
     _current = current;
     _cursorIndex = current.cursor.clamp(0, current.questionNos.length - 1);
-    _revealed
-      ..clear()
-      ..addAll(current.revealed);
+    // full/review では revealed を持ち越さない（移植元 quiz.js:261-265 と同じ
+    // isDrill ガード）。clear() はガード外に置き、前回状態を必ず捨てる。
+    _revealed.clear();
+    if (current.mode == QuizMode.drill) {
+      _revealed.addAll(current.revealed);
+    }
     _loading = false;
     notifyListeners();
   }

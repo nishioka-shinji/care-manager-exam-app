@@ -895,6 +895,36 @@ void main() {
       expect(controller.isCurrentRevealed, isTrue);
     });
 
+    testWidgets(
+      'fullモード+revealed入りのcme:currentをloadしてもisRevealedにならず選択肢がタップできる（外部改変耐性）',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final storage = StorageRepository();
+        await storage.init();
+        await storage.saveCurrent(
+          CurrentSession(
+            examId: _examId,
+            mode: QuizMode.full,
+            startedAt: '2026-09-19T00:00:00.000Z',
+            questionNos: const [1, 2, 3],
+            cursor: 0,
+            answers: const {},
+            revealed: const [1, 2],
+          ),
+        );
+        final controller = QuizController(
+          examRepository: ExamRepository(),
+          storageRepository: storage,
+        );
+
+        await tester.runAsync(() => controller.load());
+
+        expect(controller.isRevealed(1), isFalse);
+        expect(controller.toggleChoice(1, 3, 2), isTrue);
+        expect(controller.selectionOf(1).value, {3});
+      },
+    );
+
     testWidgets('full/reviewモードではrevealCurrentは常に拒否される（回帰防止）', (tester) async {
       final controllerFull = await _buildController(
         tester,

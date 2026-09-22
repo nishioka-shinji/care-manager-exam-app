@@ -34,6 +34,16 @@ class _FakeExamRepository extends ExamRepository {
   Future<Exam> loadExam(String examId) async => _exams[examId]!;
 }
 
+/// index.json の読み込みに失敗するフェイク。loadError 時の primaryExam が
+/// null になる経路（getWrongQuestionNos('')）を検証するために使う。
+class _ThrowingExamRepository extends ExamRepository {
+  @override
+  Future<List<ExamMeta>> loadIndex() async => throw Exception('index error');
+
+  @override
+  Future<Exam> loadExam(String examId) async => throw Exception('exam error');
+}
+
 Exam _buildExam({required String id, required String title, int count = 60}) {
   return Exam(
     id: id,
@@ -359,6 +369,22 @@ void main() {
     expect(controller.current?.mode, QuizMode.drill);
     expect(controller.current?.questionNos, List.generate(60, (i) => i + 1));
     expect(find.text('quiz'), findsOneWidget);
+  });
+
+  testWidgets('年度データの読み込みに失敗すると primaryExam が null になり wrongNos が空になる', (
+    tester,
+  ) async {
+    final controller = await _buildController(
+      tester,
+      examRepository: _ThrowingExamRepository(),
+      statResults: {5: false, 30: false},
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(controller.loadError, isTrue);
+    expect(controller.primaryExam, isNull);
+    expect(controller.wrongNos, isEmpty);
   });
 
   testWidgets('問題が0問の年度で一問一答ボタンが disabled になる', (tester) async {

@@ -3,7 +3,370 @@
     {
       "id": "28",
       "title": "第28回（令和7年度）介護支援専門員 実務研修受講試験",
-      "file": "exam-28.json"
+      "file": "exam-28.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/28/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 28,
+      "session": 0
+    },
+    {
+      "id": "27",
+      "title": "第27回（令和6年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-27.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/27/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 27,
+      "session": 0
+    },
+    {
+      "id": "26",
+      "title": "第26回（令和5年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-26.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/26/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 26,
+      "session": 0
+    },
+    {
+      "id": "25",
+      "title": "第25回（令和4年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-25.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/25/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 25,
+      "session": 0
+    },
+    {
+      "id": "24",
+      "title": "第24回（令和3年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-24.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/24/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 24,
+      "session": 0
+    },
+    {
+      "id": "23",
+      "title": "第23回（令和2年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-23.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/23/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 23,
+      "session": 0
+    },
+    {
+      "id": "2202",
+      "title": "第22回（令和元年度・3月実施）介護支援専門員 実務研修受講試験",
+      "file": "exam-2202.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/2202/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 22,
+      "session": 2
+    },
+    {
+      "id": "2201",
+      "title": "第22回（令和元年度・10月実施）介護支援専門員 実務研修受講試験",
+      "file": "exam-2201.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/2201/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 22,
+      "session": 1
+    },
+    {
+      "id": "21",
+      "title": "第21回（平成30年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-21.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/21/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 21,
+      "session": 0
+    },
+    {
+      "id": "20",
+      "title": "第20回（平成29年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-20.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/20/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 20,
+      "session": 0
+    },
+    {
+      "id": "19",
+      "title": "第19回（平成28年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-19.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/19/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 19,
+      "session": 0
+    },
+    {
+      "id": "18",
+      "title": "第18回（平成27年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-18.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/18/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 18,
+      "session": 0
+    },
+    {
+      "id": "17",
+      "title": "第17回（平成26年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-17.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/17/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 17,
+      "session": 0
+    },
+    {
+      "id": "16",
+      "title": "第16回（平成25年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-16.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/16/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 16,
+      "session": 0
+    },
+    {
+      "id": "15",
+      "title": "第15回（平成24年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-15.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/15/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 15,
+      "session": 0
+    },
+    {
+      "id": "14",
+      "title": "第14回（平成23年度）介護支援専門員 実務研修受講試験",
+      "file": "exam-14.json",
+      "questionCount": 60,
+      "source": "https://www.care-news.jp/kakomon/14/all_test.html",
+      "sections": [
+        {
+          "id": "care",
+          "name": "介護支援分野",
+          "from": 1,
+          "to": 25
+        },
+        {
+          "id": "health_welfare",
+          "name": "保健医療福祉サービス分野",
+          "from": 26,
+          "to": 60
+        }
+      ],
+      "round": 14,
+      "session": 0
     }
   ]
 }

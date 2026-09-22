@@ -12,7 +12,9 @@ import 'package:care_manager_exam_app/features/home/home_screen.dart';
 import 'package:care_manager_exam_app/routes.dart';
 import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:care_manager_exam_app/widgets/app_button.dart';
+import 'package:care_manager_exam_app/widgets/app_card.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -44,17 +46,25 @@ class _ThrowingExamRepository extends ExamRepository {
   Future<Exam> loadExam(String examId) async => throw Exception('exam error');
 }
 
-Exam _buildExam({required String id, required String title, int count = 60}) {
+Exam _buildExam({
+  required String id,
+  required String title,
+  int count = 60,
+  List<Section>? sections,
+}) {
+  final examSections =
+      sections ??
+      const [
+        Section(id: 'care', name: '介護支援分野', from: 1, to: 25),
+        Section(id: 'health_welfare', name: '保健医療福祉サービス分野', from: 26, to: 60),
+      ];
   return Exam(
     id: id,
     title: title,
     source: 'https://example.test/$id',
     credit: '解答・解説: 学校法人 藤仁館学園',
     fetchedAt: '2026-08-31',
-    sections: const [
-      Section(id: 'care', name: '介護支援分野', from: 1, to: 25),
-      Section(id: 'health_welfare', name: '保健医療福祉サービス分野', from: 26, to: 60),
-    ],
+    sections: examSections,
     questions: [
       for (var no = 1; no <= count; no++)
         Question(
@@ -79,7 +89,7 @@ ExamRepository _singleExamRepository() {
 
 ExamRepository _multiYearExamRepository() {
   final exam28 = _buildExam(id: '28', title: '第28回試験');
-  final exam27 = _buildExam(id: '27', title: '第27回試験');
+  final exam27 = _buildExam(id: '27', title: '第27回試験', count: 40);
   return _FakeExamRepository(
     [
       ExamMeta(id: '28', title: exam28.title, file: 'exam-28.json'),
@@ -89,28 +99,46 @@ ExamRepository _multiYearExamRepository() {
   );
 }
 
+ExamRepository _splitRoundExamRepository() {
+  final exam28 = _buildExam(id: '28', title: '第28回（令和7年度）試験');
+  final exam2202 = _buildExam(id: '2202', title: '第22回（令和元年度・3月実施）試験');
+  final exam2201 = _buildExam(id: '2201', title: '第22回（令和元年度・10月実施）試験');
+  return _FakeExamRepository(
+    [
+      ExamMeta(id: '28', title: exam28.title, file: 'exam-28.json'),
+      ExamMeta(id: '2202', title: exam2202.title, file: 'exam-2202.json'),
+      ExamMeta(id: '2201', title: exam2201.title, file: 'exam-2201.json'),
+    ],
+    {'28': exam28, '2202': exam2202, '2201': exam2201},
+  );
+}
+
 Session _buildSession({
   required String id,
   required String finishedAt,
+  String examId = _examId,
   QuizMode mode = QuizMode.full,
+  Score? score,
 }) {
   return Session(
     id: id,
-    examId: _examId,
+    examId: examId,
     mode: mode,
     startedAt: '2026-09-19T00:00:00.000Z',
     finishedAt: finishedAt,
     answers: {
       1: [1],
     },
-    score: const Score(
-      total: 18,
-      max: 25,
-      bySection: {
-        'care': SectionScore(correct: 18, count: 25),
-        'health_welfare': SectionScore(correct: 20, count: 35),
-      },
-    ),
+    score:
+        score ??
+        const Score(
+          total: 18,
+          max: 25,
+          bySection: {
+            'care': SectionScore(correct: 18, count: 25),
+            'health_welfare': SectionScore(correct: 20, count: 35),
+          },
+        ),
   );
 }
 
@@ -137,6 +165,7 @@ Future<HomeController> _buildController(
   CurrentSession? current,
   List<Session> sessions = const [],
   Map<int, bool> statResults = const {},
+  Map<String, Map<int, bool>> statResultsByExamId = const {},
 }) async {
   SharedPreferences.setMockInitialValues({});
   final storage = StorageRepository();
@@ -156,6 +185,12 @@ Future<HomeController> _buildController(
       await storage.applyResults(_examId, [
         for (final entry in statResults.entries)
           (no: entry.key, correct: entry.value),
+      ]);
+    }
+    for (final examStats in statResultsByExamId.entries) {
+      await storage.applyResults(examStats.key, [
+        for (final result in examStats.value.entries)
+          (no: result.key, correct: result.value),
       ]);
     }
     await controller.load();
@@ -452,7 +487,8 @@ void main() {
     await tester.tap(find.text('一問一答で解く'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('破棄して新しく始めますか？'), findsOneWidget);
+    expect(find.textContaining('中断中の『第28回'), findsOneWidget);
+    expect(find.textContaining('』を始めますか？'), findsOneWidget);
 
     await tester.tap(find.text('破棄して新しく始める'));
     await tester.pumpAndSettle();
@@ -480,7 +516,8 @@ void main() {
     await tester.tap(find.text('本番通し60問を解く'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('破棄して新しく始めますか？'), findsOneWidget);
+    expect(find.textContaining('中断中の『第28回'), findsOneWidget);
+    expect(find.textContaining('』を始めますか？'), findsOneWidget);
 
     await tester.tap(find.text('キャンセル'));
     await tester.pumpAndSettle();
@@ -528,6 +565,8 @@ void main() {
     // 末尾に保存したもの(s1)が最新になる。表示は3件（s1,s2,s3）まで。
     expect(find.textContaining('18 / 25'), findsNWidgets(3));
 
+    await tester.ensureVisible(find.text('18 / 25').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('18 / 25').first);
     await tester.pumpAndSettle();
 
@@ -555,9 +594,12 @@ void main() {
     await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
     await tester.pumpAndSettle();
 
+    // The selector card uses a compact title for narrow/larger-text layouts;
+    // the selected exam card keeps the full source title.
     expect(find.text('第28回（令和7年度）介護支援専門員 実務研修受講試験'), findsOneWidget);
+    expect(find.text('第28回（令和7年度）'), findsOneWidget);
     expect(find.text('全60問'), findsOneWidget);
-    expect(find.text('出典: ケアマネージャー試験過去問題集'), findsOneWidget);
+    expect(find.textContaining('出典: ケアマネージャー試験過去問題集'), findsOneWidget);
   });
 
   testWidgets('複数年度のとき年度カードがループ描画される', (tester) async {
@@ -568,8 +610,276 @@ void main() {
     await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
     await tester.pumpAndSettle();
 
-    expect(find.text('第28回試験'), findsOneWidget);
+    expect(find.text('第28回試験'), findsNWidgets(2));
     expect(find.text('第27回試験'), findsOneWidget);
+  });
+
+  testWidgets('最新年度が初期選択され、別年度の本番通しを開始できる', (tester) async {
+    final controller = await _buildController(
+      tester,
+      examRepository: _multiYearExamRepository(),
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(controller.selectedExamId, '28');
+    expect(find.text('本番通し60問を解く'), findsOneWidget);
+
+    await tester.tap(find.text('第27回試験'));
+    await tester.pumpAndSettle();
+    expect(controller.selectedExamId, '27');
+    expect(find.text('本番通し40問を解く'), findsOneWidget);
+
+    await tester.tap(find.text('本番通し40問を解く'));
+    await tester.pumpAndSettle();
+    expect(controller.current?.examId, '27');
+    expect(controller.current?.mode, QuizMode.full);
+    expect(controller.current?.questionNos, List.generate(40, (i) => i + 1));
+    expect(find.text('quiz'), findsOneWidget);
+  });
+
+  testWidgets('選択した年度で一問一答を開始できる', (tester) async {
+    final controller = await _buildController(
+      tester,
+      examRepository: _multiYearExamRepository(),
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('第27回試験'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一問一答で解く'));
+    await tester.pumpAndSettle();
+
+    expect(controller.current?.examId, '27');
+    expect(controller.current?.mode, QuizMode.drill);
+    expect(controller.current?.questionNos, List.generate(40, (i) => i + 1));
+    expect(find.text('quiz'), findsOneWidget);
+  });
+
+  testWidgets('誤答統計は年度ごとに切り替わり、選択年度の復習を開始する', (tester) async {
+    final controller = await _buildController(
+      tester,
+      examRepository: _multiYearExamRepository(),
+      statResultsByExamId: {
+        '28': {5: false},
+        '27': {12: false, 30: false},
+      },
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('間違えた問題を復習（1問）'), findsOneWidget);
+    await tester.tap(find.text('第27回試験'));
+    await tester.pumpAndSettle();
+    expect(find.text('間違えた問題を復習（2問）'), findsOneWidget);
+
+    await tester.tap(find.text('間違えた問題を復習（2問）'));
+    await tester.pumpAndSettle();
+    expect(controller.current?.examId, '27');
+    expect(controller.current?.mode, QuizMode.review);
+    expect(controller.current?.questionNos, [12, 30]);
+  });
+
+  testWidgets('選択年度は再ロードと別画面からの復帰後も保たれる', (tester) async {
+    final controller = await _buildController(
+      tester,
+      examRepository: _multiYearExamRepository(),
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('第27回試験'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(controller.load);
+    await tester.pumpAndSettle();
+    expect(controller.selectedExamId, '27');
+    expect(find.text('本番通し40問を解く'), findsOneWidget);
+
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
+    );
+    navigator.pushNamed('/history');
+    await tester.pumpAndSettle();
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(controller.selectedExamId, '27');
+    expect(find.text('本番通し40問を解く'), findsOneWidget);
+  });
+
+  testWidgets('再開は年度選択を変えても保存済みの年度を使う', (tester) async {
+    final controller = await _buildController(
+      tester,
+      examRepository: _multiYearExamRepository(),
+      current: CurrentSession(
+        examId: '28',
+        mode: QuizMode.full,
+        startedAt: '2026-09-19T00:00:00.000Z',
+        questionNos: List.generate(60, (i) => i + 1),
+        cursor: 3,
+        answers: const {},
+      ),
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    final resumeCard = find.ancestor(
+      of: find.text('前回の続きがあります'),
+      matching: find.byType(AppCard),
+    );
+    expect(
+      find.descendant(of: resumeCard, matching: find.text('第28回試験')),
+      findsOneWidget,
+    );
+
+    await tester.ensureVisible(find.text('第27回試験'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('第27回試験'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, 500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('前回の続きから再開'));
+    await tester.pumpAndSettle();
+
+    expect(controller.selectedExamId, '27');
+    expect(controller.current?.examId, '28');
+    expect(find.text('quiz'), findsOneWidget);
+  });
+
+  testWidgets('上書き確認に中断中と新規開始の両年度が出る', (tester) async {
+    final controller = await _buildController(
+      tester,
+      examRepository: _multiYearExamRepository(),
+      current: CurrentSession(
+        examId: '28',
+        mode: QuizMode.full,
+        startedAt: '2026-09-19T00:00:00.000Z',
+        questionNos: List.generate(60, (i) => i + 1),
+        cursor: 0,
+        answers: const {},
+      ),
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('第27回試験'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('第27回試験'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('本番通し40問を解く'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('本番通し40問を解く'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('中断中の『第28回試験』を破棄して『第27回試験』を始めますか？'), findsOneWidget);
+  });
+
+  testWidgets('直近履歴はセッションの年度名とその年度の分野名を使う', (tester) async {
+    final exam28 = _buildExam(
+      id: '28',
+      title: '第28回・新年度',
+      sections: const [Section(id: 'care', name: '新年度の介護分野', from: 1, to: 60)],
+    );
+    final exam27 = _buildExam(
+      id: '27',
+      title: '第27回・旧年度',
+      sections: const [Section(id: 'care', name: '旧年度の介護分野', from: 1, to: 60)],
+    );
+    final repository = _FakeExamRepository(
+      [
+        ExamMeta(id: '28', title: exam28.title, file: 'exam-28.json'),
+        ExamMeta(id: '27', title: exam27.title, file: 'exam-27.json'),
+      ],
+      {'28': exam28, '27': exam27},
+    );
+    final controller = await _buildController(
+      tester,
+      examRepository: repository,
+      sessions: [
+        _buildSession(
+          id: 'new',
+          examId: '28',
+          finishedAt: '2026-09-20T04:00:00.000Z',
+        ),
+        _buildSession(
+          id: 'old',
+          examId: '27',
+          finishedAt: '2026-09-19T04:00:00.000Z',
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    final historyCard = find.ancestor(
+      of: find.text('直近の受験履歴'),
+      matching: find.byType(AppCard),
+    );
+    expect(
+      find.descendant(of: historyCard, matching: find.text('第28回・新年度')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: historyCard, matching: find.text('第27回・旧年度')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('新年度の介護分野 18/25'), findsOneWidget);
+    expect(find.textContaining('旧年度の介護分野 18/25'), findsOneWidget);
+  });
+
+  testWidgets('320px幅でも年度カードが溢れず、2201と2202を区別して選べる', (tester) async {
+    addTearDown(tester.view.reset);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 600);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    final controller = await _buildController(
+      tester,
+      examRepository: _splitRoundExamRepository(),
+    );
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    final marchCard = find.byWidgetPredicate(
+      (widget) =>
+          widget is Semantics &&
+          widget.properties.label == '第22回（令和元年度・3月実施）試験、全60問',
+    );
+    final octoberCard = find.byWidgetPredicate(
+      (widget) =>
+          widget is Semantics &&
+          widget.properties.label == '第22回（令和元年度・10月実施）試験、全60問',
+    );
+    expect(marchCard, findsOneWidget);
+    expect(octoberCard, findsOneWidget);
+
+    final semanticsHandle = tester.ensureSemantics();
+    expect(
+      tester
+          .getSemantics(marchCard)
+          .getSemanticsData()
+          .hasAction(SemanticsAction.tap),
+      isTrue,
+    );
+    expect(
+      tester
+          .getSemantics(octoberCard)
+          .getSemanticsData()
+          .hasAction(SemanticsAction.tap),
+      isTrue,
+    );
+    semanticsHandle.dispose();
+    expect(tester.takeException(), isNull);
+
+    await tester.ensureVisible(octoberCard);
+    await tester.pumpAndSettle();
+    await tester.tap(octoberCard);
+    await tester.pumpAndSettle();
+    expect(controller.selectedExamId, '2201');
+    final selectedOctoberCard = tester.widget<Semantics>(octoberCard);
+    expect(selectedOctoberCard.properties.button, isTrue);
+    expect(selectedOctoberCard.properties.selected, isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('ストレージ利用不可のとき警告バナーが出る', (tester) async {

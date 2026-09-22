@@ -5,7 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import '../core/models/exam.dart';
 import '../core/models/exam_meta.dart';
 
-/// `assets/data/` 配下の JSON をロードする層。データは 92KB 程度なので
+/// `assets/data/` 配下の JSON をロードする層。データは約 1.9MB なので
 /// 起動時の一括ロードで足り、都度パースし直さないようインスタンス内にキャッシュする。
 class ExamRepository {
   static const _indexPath = 'assets/data/index.json';

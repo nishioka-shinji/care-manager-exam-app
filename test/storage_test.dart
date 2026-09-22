@@ -87,16 +87,16 @@ void main() {
       final repo = StorageRepository();
       await repo.init();
 
-      await repo.applyResults([(no: 1, correct: true)]);
-      await repo.applyResults([(no: 1, correct: true)]);
-      var stats = repo.loadStats();
+      await repo.applyResults('28', [(no: 1, correct: true)]);
+      await repo.applyResults('28', [(no: 1, correct: true)]);
+      var stats = repo.loadStats('28');
       expect(stats['1']!.attempts, 2);
       expect(stats['1']!.correct, 2);
       expect(stats['1']!.streak, 2);
       expect(stats['1']!.lastCorrect, isTrue);
 
-      await repo.applyResults([(no: 1, correct: false)]);
-      stats = repo.loadStats();
+      await repo.applyResults('28', [(no: 1, correct: false)]);
+      stats = repo.loadStats('28');
       expect(stats['1']!.attempts, 3);
       expect(stats['1']!.correct, 2);
       expect(stats['1']!.streak, 0);
@@ -107,13 +107,13 @@ void main() {
       final repo = StorageRepository();
       await repo.init();
 
-      await repo.applyResults([
+      await repo.applyResults('28', [
         (no: 5, correct: false),
         (no: 1, correct: false),
         (no: 3, correct: true),
       ]);
 
-      expect(repo.getWrongQuestionNos(), [1, 5]);
+      expect(repo.getWrongQuestionNos('28'), [1, 5]);
     });
 
     test('summarizeStats の3指標が正しい', () async {
@@ -121,17 +121,65 @@ void main() {
       await repo.init();
 
       // 問1: 2回正解のみ -> everWrong 対象外、streak 2 -> streak2plus 対象。
-      await repo.applyResults([(no: 1, correct: true)]);
-      await repo.applyResults([(no: 1, correct: true)]);
+      await repo.applyResults('28', [(no: 1, correct: true)]);
+      await repo.applyResults('28', [(no: 1, correct: true)]);
       // 問2: 1回不正解のみ -> everWrong 対象、streak 0。
-      await repo.applyResults([(no: 2, correct: false)]);
+      await repo.applyResults('28', [(no: 2, correct: false)]);
       // 問3: 正解1回のみ -> everWrong 対象外、streak 1 -> streak2plus 対象外。
-      await repo.applyResults([(no: 3, correct: true)]);
+      await repo.applyResults('28', [(no: 3, correct: true)]);
 
       final summary = repo.summarizeStats();
       expect(summary.tracked, 3);
       expect(summary.everWrong, 1);
       expect(summary.streak2plus, 1);
+    });
+
+    test('applyResults は examId が空文字なら何も書かず false を返す', () async {
+      final repo = StorageRepository();
+      await repo.init();
+
+      final result = await repo.applyResults('', [(no: 1, correct: true)]);
+
+      expect(result, isFalse);
+      expect(repo.loadStats('28'), isEmpty);
+      expect(repo.summarizeStats().tracked, 0);
+    });
+
+    test('getWrongQuestionNos は examId が空文字なら空配列を返す', () async {
+      final repo = StorageRepository();
+      await repo.init();
+      await repo.applyResults('28', [(no: 1, correct: false)]);
+
+      expect(repo.getWrongQuestionNos(''), isEmpty);
+    });
+
+    test('年度が異なれば同じ問番号でも記録が上書きし合わない', () async {
+      final repo = StorageRepository();
+      await repo.init();
+
+      await repo.applyResults('28', [(no: 1, correct: false)]);
+      await repo.applyResults('29', [(no: 1, correct: true)]);
+
+      expect(repo.getWrongQuestionNos('28'), [1]);
+      expect(repo.getWrongQuestionNos('29'), isEmpty);
+    });
+
+    test('summarizeStats(examId: ...) は指定年度のみを集計する', () async {
+      final repo = StorageRepository();
+      await repo.init();
+
+      await repo.applyResults('28', [(no: 1, correct: false)]);
+      await repo.applyResults('29', [(no: 1, correct: true)]);
+
+      final summary28 = repo.summarizeStats(examId: '28');
+      expect(summary28.tracked, 1);
+      expect(summary28.everWrong, 1);
+
+      final summary29 = repo.summarizeStats(examId: '29');
+      expect(summary29.tracked, 1);
+      expect(summary29.everWrong, 0);
+
+      expect(repo.summarizeStats().tracked, 2);
     });
   });
 
@@ -184,6 +232,53 @@ void main() {
       expect(loaded, isNull);
     });
 
+    test('mode:drill かつ revealed 入りの current が復元される', () async {
+      final current = CurrentSession(
+        examId: '28',
+        mode: QuizMode.drill,
+        startedAt: '2026-09-19T00:00:00.000Z',
+        questionNos: [1, 2, 3],
+        cursor: 1,
+        answers: const {},
+        revealed: [2, 1],
+      );
+      final repo = StorageRepository();
+      await repo.init();
+      await repo.saveCurrent(current);
+
+      final loaded = await repo.loadCurrent();
+      expect(loaded, isNotNull);
+      expect(loaded!.mode, QuizMode.drill);
+      expect(loaded.revealed, [1, 2]);
+    });
+
+    test('revealed が List でない cme:current は削除され null が返る', () async {
+      SharedPreferences.setMockInitialValues({
+        'cme:current': '{"examId":"28","mode":"drill","startedAt":"x","questionNos":[1],"cursor":0,"answers":{},"revealed":"not a list"}',
+      });
+      final repo = StorageRepository();
+      await repo.init();
+
+      final loaded = await repo.loadCurrent();
+      expect(loaded, isNull);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('cme:current'), isNull);
+    });
+
+    test('revealed 無しの mode:full current は従来どおり読める（後方互換）', () async {
+      SharedPreferences.setMockInitialValues({
+        'cme:current': '{"examId":"28","mode":"full","startedAt":"x","questionNos":[1,2],"cursor":0,"answers":{}}',
+      });
+      final repo = StorageRepository();
+      await repo.init();
+
+      final loaded = await repo.loadCurrent();
+      expect(loaded, isNotNull);
+      expect(loaded!.mode, QuizMode.full);
+      expect(loaded.revealed, isEmpty);
+    });
+
     test('clearCurrent で cme:current が消える', () async {
       final repo = StorageRepository();
       await repo.init();
@@ -205,14 +300,15 @@ void main() {
   group('破損データからの復旧（他キーに波及しない）', () {
     test('cme:sessions が壊れていても cme:stats は生き残る', () async {
       SharedPreferences.setMockInitialValues({
+        'cme:v': '2',
         'cme:sessions': '{not json',
-        'cme:stats': '{"1": {"attempts": 1, "correct": 1, "lastCorrect": true, "lastAt": null, "streak": 1}}',
+        'cme:stats': '{"28": {"1": {"attempts": 1, "correct": 1, "lastCorrect": true, "lastAt": null, "streak": 1}}}',
       });
       final repo = StorageRepository();
       await repo.init();
 
       expect(repo.loadSessions(), isEmpty);
-      final stats = repo.loadStats();
+      final stats = repo.loadStats('28');
       expect(stats['1']!.attempts, 1);
       expect(stats['1']!.streak, 1);
 
@@ -226,13 +322,14 @@ void main() {
         finishedAt: '2026-09-19T00:00:00.000Z',
       );
       SharedPreferences.setMockInitialValues({
+        'cme:v': '2',
         'cme:sessions': jsonEncode([validSession.toJson()]),
         'cme:stats': '"not an object"',
       });
       final repo = StorageRepository();
       await repo.init();
 
-      final stats = repo.loadStats();
+      final stats = repo.loadStats('28');
       expect(stats, isEmpty);
       final sessions = repo.loadSessions();
       expect(sessions, hasLength(1));
@@ -244,45 +341,48 @@ void main() {
 
     test('cme:stats の一部エントリが壊れていても正常なエントリは生きる', () async {
       SharedPreferences.setMockInitialValues({
-        'cme:stats': '{"1":{"attempts":1,"correct":1,"lastCorrect":true,"lastAt":null,"streak":1},"2":"garbage"}',
+        'cme:v': '2',
+        'cme:stats': '{"28":{"1":{"attempts":1,"correct":1,"lastCorrect":true,"lastAt":null,"streak":1},"2":"garbage"}}',
       });
       final repo = StorageRepository();
       await repo.init();
 
-      final stats = repo.loadStats();
+      final stats = repo.loadStats('28');
       expect(stats.containsKey('2'), isFalse);
       expect(stats['1']!.attempts, 1);
       expect(repo.summarizeStats().tracked, 1);
-      expect(repo.getWrongQuestionNos(), isEmpty);
+      expect(repo.getWrongQuestionNos('28'), isEmpty);
     });
 
     test('cme:stats のエントリでフィールドが欠落していても既定値で補完される', () async {
       SharedPreferences.setMockInitialValues({
-        'cme:stats': '{"1":{"attempts":1,"correct":1}}',
+        'cme:v': '2',
+        'cme:stats': '{"28":{"1":{"attempts":1,"correct":1}}}',
       });
       final repo = StorageRepository();
       await repo.init();
 
-      final stats = repo.loadStats();
+      final stats = repo.loadStats('28');
       expect(stats['1']!.attempts, 1);
       expect(stats['1']!.lastCorrect, isFalse);
       expect(stats['1']!.streak, 0);
       expect(repo.summarizeStats().tracked, 1);
       // lastCorrect は「フィールド欠落」であり、移植元の厳密比較
       // （=== false）では対象外。loadStats の既定値フォールバックとは異なる。
-      expect(repo.getWrongQuestionNos(), isEmpty);
+      expect(repo.getWrongQuestionNos('28'), isEmpty);
     });
 
     test('applyResults は型違いの既存エントリを初期値扱いで復旧できる', () async {
       SharedPreferences.setMockInitialValues({
-        'cme:stats': '{"3":{"attempts":"x"}}',
+        'cme:v': '2',
+        'cme:stats': '{"28":{"3":{"attempts":"x"}}}',
       });
       final repo = StorageRepository();
       await repo.init();
 
-      await repo.applyResults([(no: 3, correct: true)]);
+      await repo.applyResults('28', [(no: 3, correct: true)]);
 
-      final stats = repo.loadStats();
+      final stats = repo.loadStats('28');
       expect(stats['3']!.attempts, 1);
       expect(stats['3']!.correct, 1);
       expect(stats['3']!.streak, 1);
@@ -290,12 +390,13 @@ void main() {
 
     test('cme:stats の非数値キーは getWrongQuestionNos で除外される', () async {
       SharedPreferences.setMockInitialValues({
-        'cme:stats': '{"abc":{"attempts":1,"correct":0,"lastCorrect":false,"lastAt":null,"streak":0}}',
+        'cme:v': '2',
+        'cme:stats': '{"28":{"abc":{"attempts":1,"correct":0,"lastCorrect":false,"lastAt":null,"streak":0}}}',
       });
       final repo = StorageRepository();
       await repo.init();
 
-      expect(repo.getWrongQuestionNos(), isEmpty);
+      expect(repo.getWrongQuestionNos('28'), isEmpty);
     });
 
     test('getWrongQuestionNos は lastCorrect が boolean の false のときだけ対象にする（移植元の === false と1:1）', () async {
@@ -323,11 +424,14 @@ void main() {
           'lastCorrect': false,
         },
       };
-      SharedPreferences.setMockInitialValues({'cme:stats': jsonEncode(cases)});
+      SharedPreferences.setMockInitialValues({
+        'cme:v': '2',
+        'cme:stats': jsonEncode({'28': cases}),
+      });
       final repo = StorageRepository();
       await repo.init();
 
-      expect(repo.getWrongQuestionNos(), [6]);
+      expect(repo.getWrongQuestionNos('28'), [6]);
     });
 
     test('cme:sessions の要素がフィールド欠落でも他の要素には波及しない', () async {
@@ -382,7 +486,7 @@ void main() {
       await repo.saveSession(
         _buildSession(id: 's1', finishedAt: '2026-09-19T00:00:00.000Z'),
       );
-      await repo.applyResults([(no: 1, correct: true)]);
+      await repo.applyResults('28', [(no: 1, correct: true)]);
       await repo.saveCurrent(
         CurrentSession(
           examId: '28',
@@ -397,11 +501,23 @@ void main() {
       await repo.clearAll();
 
       expect(repo.loadSessions(), isEmpty);
-      expect(repo.loadStats(), isEmpty);
+      expect(repo.loadStats('28'), isEmpty);
       expect(await repo.loadCurrent(), isNull);
 
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('cme:v'), '1');
+      expect(prefs.getString('cme:v'), '2');
+    });
+
+    test('全削除後のマイグレーションは空データに対して no-op になる', () async {
+      final repo = StorageRepository();
+      await repo.init();
+      await repo.applyResults('28', [(no: 1, correct: false)]);
+
+      await repo.clearAll();
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('cme:stats'), isNull);
+      expect(repo.summarizeStats().tracked, 0);
     });
   });
 
@@ -411,7 +527,7 @@ void main() {
       await repo.init();
 
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('cme:v'), '1');
+      expect(prefs.getString('cme:v'), '2');
     });
 
     test('壊れた cme:v も schemaVersion で書き直される', () async {
@@ -420,7 +536,183 @@ void main() {
       await repo.init();
 
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('cme:v'), '1');
+      expect(prefs.getString('cme:v'), '2');
+    });
+  });
+
+  group('cme:stats の年度スコープ化マイグレーション（v1 -> v2）', () {
+    test('旧形式（フラット）を28バケットへ後方互換で移行する', () async {
+      SharedPreferences.setMockInitialValues({
+        'cme:v': '1',
+        'cme:stats': jsonEncode({
+          '1': {
+            'attempts': 2,
+            'correct': 1,
+            'lastCorrect': false,
+            'lastAt': '2026-09-01T00:00:00.000Z',
+            'streak': 0,
+          },
+          '5': {
+            'attempts': 3,
+            'correct': 2,
+            'lastCorrect': false,
+            'lastAt': '2026-09-02T00:00:00.000Z',
+            'streak': 0,
+          },
+        }),
+      });
+
+      // 移行前の期待値（旧実装であれば得られていたはずの値）を先に固定する。
+      const expectedWrongNos = [1, 5];
+      const expectedTracked = 2;
+      const expectedEverWrong = 2;
+      const expectedStreak2plus = 0;
+
+      final repo = StorageRepository();
+      await repo.init();
+
+      final prefs = await SharedPreferences.getInstance();
+      final migrated = jsonDecode(prefs.getString('cme:stats')!);
+      expect(migrated, {
+        '28': {
+          '1': {
+            'attempts': 2,
+            'correct': 1,
+            'lastCorrect': false,
+            'lastAt': '2026-09-01T00:00:00.000Z',
+            'streak': 0,
+          },
+          '5': {
+            'attempts': 3,
+            'correct': 2,
+            'lastCorrect': false,
+            'lastAt': '2026-09-02T00:00:00.000Z',
+            'streak': 0,
+          },
+        },
+      });
+
+      expect(repo.getWrongQuestionNos('28'), expectedWrongNos);
+      final summary = repo.summarizeStats();
+      expect(summary.tracked, expectedTracked);
+      expect(summary.everWrong, expectedEverWrong);
+      expect(summary.streak2plus, expectedStreak2plus);
+      expect(prefs.getString('cme:v'), '2');
+    });
+
+    test('冪等: init を2回通しても結果が変わらない（28が入れ子にならない）', () async {
+      SharedPreferences.setMockInitialValues({
+        'cme:v': '1',
+        'cme:stats': jsonEncode({
+          '1': {
+            'attempts': 1,
+            'correct': 1,
+            'lastCorrect': true,
+            'lastAt': null,
+            'streak': 1,
+          },
+        }),
+      });
+
+      final repo = StorageRepository();
+      await repo.init();
+      final prefs = await SharedPreferences.getInstance();
+      final afterFirst = prefs.getString('cme:stats');
+
+      // 2回目の init（v2 のままなのでマイグレーションは走らないはずだが、
+      // 万一走っても no-op であることを確認する）。
+      final repo2 = StorageRepository();
+      await repo2.init();
+      final afterSecond = prefs.getString('cme:stats');
+
+      expect(afterSecond, afterFirst);
+      final decoded = jsonDecode(afterSecond!) as Map<String, dynamic>;
+      expect(decoded.keys, ['28']);
+      expect(
+        (decoded['28'] as Map<String, dynamic>).containsKey('28'),
+        isFalse,
+      );
+    });
+
+    test('既に v2 形式のデータは誤検知されず変更されない', () async {
+      final v2Stats = {
+        '28': {
+          '1': {
+            'attempts': 1,
+            'correct': 1,
+            'lastCorrect': true,
+            'lastAt': null,
+            'streak': 1,
+          },
+        },
+        '29': {
+          '1': {
+            'attempts': 1,
+            'correct': 0,
+            'lastCorrect': false,
+            'lastAt': null,
+            'streak': 0,
+          },
+        },
+      };
+      SharedPreferences.setMockInitialValues({
+        'cme:v': '1',
+        'cme:stats': jsonEncode(v2Stats),
+      });
+
+      final repo = StorageRepository();
+      await repo.init();
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(jsonDecode(prefs.getString('cme:stats')!), v2Stats);
+      expect(repo.getWrongQuestionNos('28'), isEmpty);
+      expect(repo.getWrongQuestionNos('29'), [1]);
+    });
+
+    test('判定できない/壊れたキーは28バケットに引き継がれず捨てられる', () async {
+      SharedPreferences.setMockInitialValues({
+        'cme:v': '1',
+        'cme:stats': jsonEncode({
+          '1': {
+            'attempts': 1,
+            'correct': 1,
+            'lastCorrect': true,
+            'lastAt': null,
+            'streak': 1,
+          },
+          'abc': {
+            'attempts': 1,
+            'correct': 0,
+            'lastCorrect': false,
+            'lastAt': null,
+            'streak': 0,
+          },
+          '61': {
+            'attempts': 1,
+            'correct': 0,
+            'lastCorrect': false,
+            'lastAt': null,
+            'streak': 0,
+          },
+          '2': '文字列',
+        }),
+      });
+
+      final repo = StorageRepository();
+      await repo.init();
+
+      final stats = repo.loadStats('28');
+      expect(stats.keys, ['1']);
+    });
+
+    test('旧形式が無ければ何もしない', () async {
+      SharedPreferences.setMockInitialValues({'cme:v': '1'});
+      final repo = StorageRepository();
+      await repo.init();
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('cme:stats'), isNull);
+      expect(prefs.getString('cme:v'), '2');
     });
   });
 }

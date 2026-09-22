@@ -183,7 +183,7 @@ Future<HistoryController> _buildController(
     await storage.saveSession(session);
   }
   for (final round in statRounds) {
-    await storage.applyResults(round);
+    await storage.applyResults(_examId, round);
   }
   final controller = HistoryController(
     examRepository: examRepository ?? _singleExamRepository(),
@@ -403,6 +403,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('復習'), findsOneWidget);
+    expect(find.text('本番通し'), findsNothing);
+  });
+
+  testWidgets('一問一答モードのセッションは「一問一答」と表示される', (tester) async {
+    final sessions = [
+      _buildSession(
+        id: 's1',
+        finishedAt: '2026-09-19T04:00:00.000Z',
+        mode: QuizMode.drill,
+      ),
+    ];
+    final controller = await _buildController(tester, sessions: sessions);
+    await tester.pumpWidget(_wrap(HistoryScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('一問一答'), findsOneWidget);
     expect(find.text('本番通し'), findsNothing);
   });
 

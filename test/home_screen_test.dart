@@ -34,6 +34,16 @@ class _FakeExamRepository extends ExamRepository {
   Future<Exam> loadExam(String examId) async => _exams[examId]!;
 }
 
+/// index.json の読み込みに失敗するフェイク。loadError 時の primaryExam が
+/// null になる経路（getWrongQuestionNos('')）を検証するために使う。
+class _ThrowingExamRepository extends ExamRepository {
+  @override
+  Future<List<ExamMeta>> loadIndex() async => throw Exception('index error');
+
+  @override
+  Future<Exam> loadExam(String examId) async => throw Exception('exam error');
+}
+
 Exam _buildExam({required String id, required String title, int count = 60}) {
   return Exam(
     id: id,
@@ -143,7 +153,7 @@ Future<HomeController> _buildController(
       await storage.saveSession(session);
     }
     if (statResults.isNotEmpty) {
-      await storage.applyResults([
+      await storage.applyResults(_examId, [
         for (final entry in statResults.entries)
           (no: entry.key, correct: entry.value),
       ]);
@@ -206,6 +216,25 @@ void main() {
     expect(find.text('前回の続きがあります'), findsOneWidget);
     expect(find.textContaining('本番通し・5 / 60 問目まで進行中'), findsOneWidget);
     expect(find.textContaining('前回の続きから再開（5 / 60 問目）'), findsOneWidget);
+  });
+
+  testWidgets('中断セッションが一問一答モードだと再開カードに「一問一答」と出る', (tester) async {
+    final controller = await _buildController(
+      tester,
+      current: CurrentSession(
+        examId: _examId,
+        mode: QuizMode.drill,
+        startedAt: '2026-09-19T00:00:00.000Z',
+        questionNos: List.generate(60, (i) => i + 1),
+        cursor: 4,
+        answers: const {},
+      ),
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('一問一答・5 / 60 問目まで進行中'), findsOneWidget);
+    expect(find.textContaining('本番通し・5 / 60 問目まで進行中'), findsNothing);
   });
 
   testWidgets('やめて最初からで確認シートが出て OK で current が消える', (tester) async {
@@ -329,6 +358,110 @@ void main() {
     expect(find.text('quiz'), findsOneWidget);
   });
 
+  testWidgets('一問一答で questionNos が1〜60昇順の current が作られる', (tester) async {
+    final controller = await _buildController(tester);
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('一問一答で解く'));
+    await tester.pumpAndSettle();
+
+    expect(controller.current?.mode, QuizMode.drill);
+    expect(controller.current?.questionNos, List.generate(60, (i) => i + 1));
+    expect(find.text('quiz'), findsOneWidget);
+  });
+
+  testWidgets('年度データの読み込みに失敗すると primaryExam が null になり wrongNos が空になる', (
+    tester,
+  ) async {
+    final controller = await _buildController(
+      tester,
+      examRepository: _ThrowingExamRepository(),
+      statResults: {5: false, 30: false},
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(controller.loadError, isTrue);
+    expect(controller.primaryExam, isNull);
+    expect(controller.wrongNos, isEmpty);
+  });
+
+  testWidgets('問題が0問の年度で一問一答ボタンが disabled になる', (tester) async {
+    final exam = _buildExam(id: _examId, title: '第0回試験', count: 0);
+    final repository = _FakeExamRepository(
+      [ExamMeta(id: _examId, title: exam.title, file: 'exam-28.json')],
+      {_examId: exam},
+    );
+    final controller = await _buildController(
+      tester,
+      examRepository: repository,
+    );
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<AppButton>(
+      find.ancestor(of: find.text('一問一答で解く'), matching: find.byType(AppButton)),
+    );
+    expect(button.onPressed, isNull);
+  });
+
+  testWidgets('一問一答の説明文は可視テキストとして出ない', (tester) async {
+    final controller = await _buildController(tester);
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1問ごとに答え合わせをして、その場で解説を読みながら進みます'), findsNothing);
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.hint == '1問ごとに答え合わせをして、その場で解説を読みながら進みます',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('開始ボタンの並び順は本番通し→一問一答→復習の順である', (tester) async {
+    final controller = await _buildController(tester);
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    final fullOffset = tester.getTopLeft(find.text('本番通し60問を解く')).dy;
+    final drillOffset = tester.getTopLeft(find.text('一問一答で解く')).dy;
+    final reviewOffset = tester.getTopLeft(find.text('間違えた問題を復習（0問）')).dy;
+
+    expect(fullOffset, lessThan(drillOffset));
+    expect(drillOffset, lessThan(reviewOffset));
+  });
+
+  testWidgets('既存の中断セッションがあるとき一問一答の開始時にも上書き確認シートが出る', (tester) async {
+    final existing = CurrentSession(
+      examId: _examId,
+      mode: QuizMode.review,
+      startedAt: '2026-09-19T00:00:00.000Z',
+      questionNos: const [3, 4],
+      cursor: 1,
+      answers: const {},
+    );
+    final controller = await _buildController(tester, current: existing);
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('一問一答で解く'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('破棄して新しく始めますか？'), findsOneWidget);
+
+    await tester.tap(find.text('破棄して新しく始める'));
+    await tester.pumpAndSettle();
+
+    expect(controller.current?.mode, QuizMode.drill);
+    expect(controller.current?.questionNos, List.generate(60, (i) => i + 1));
+    expect(find.text('quiz'), findsOneWidget);
+  });
+
   testWidgets('既存の中断セッションがあるとき開始時に上書き確認シートが出て、キャンセルで current は変わらない', (
     tester,
   ) async {
@@ -399,6 +532,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('result:s1'), findsOneWidget);
+  });
+
+  testWidgets('直近履歴に一問一答モードのセッションがあると「一問一答」と出る', (tester) async {
+    final sessions = [
+      _buildSession(
+        id: 's1',
+        finishedAt: '2026-09-19T04:00:00.000Z',
+        mode: QuizMode.drill,
+      ),
+    ];
+    final controller = await _buildController(tester, sessions: sessions);
+    await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('2026/09/19 04:00・一問一答'), findsOneWidget);
+    expect(find.text('本番通し'), findsNothing);
   });
 
   testWidgets('年度カードにタイトル・全問数・出典が表示される', (tester) async {
@@ -475,7 +624,7 @@ void main() {
       await storage.saveSession(
         _buildSession(id: 's1', finishedAt: '2026-09-19T04:00:00.000Z'),
       );
-      await storage.applyResults([(no: 5, correct: false)]);
+      await storage.applyResults(_examId, [(no: 5, correct: false)]);
     });
 
     navigator.pushNamed('/quiz');

@@ -231,7 +231,7 @@ class _ResumeCard extends StatelessWidget {
     final theme = Theme.of(context);
     final total = current.questionNos.length;
     final cursorNo = current.cursor + 1;
-    final modeLabel = current.mode == QuizMode.review ? '復習' : '本番通し';
+    final label = modeLabel(current.mode);
 
     return AppCard(
       child: Column(
@@ -240,7 +240,7 @@ class _ResumeCard extends StatelessWidget {
           Text('前回の続きがあります', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           Text(
-            '$modeLabel・$cursorNo / $total 問目まで進行中',
+            '$label・$cursorNo / $total 問目まで進行中',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 8),
@@ -287,7 +287,7 @@ class _ExamCard extends StatelessWidget {
   }
 }
 
-/// 「本番通し60問を解く」「間違えた問題を復習（n問）」の2ボタン。
+/// 「本番通し60問を解く」「一問一答で解く」「間違えた問題を復習（n問）」の3ボタン。
 class _StartButtons extends StatelessWidget {
   const _StartButtons({
     required this.exam,
@@ -311,6 +311,18 @@ class _StartButtons extends StatelessWidget {
           label: '本番通し60問を解く',
           variant: AppButtonVariant.primary,
           onPressed: () => onStart(QuizMode.full, questionNos),
+        ),
+        const SizedBox(height: 10),
+        // 移植元は title 属性（ホバー）に説明を逃がす。可視テキストは
+        // 年度カードの縦の嵩を増やすため意図的に避けている（home.js:322-324）。
+        Semantics(
+          hint: '1問ごとに答え合わせをして、その場で解説を読みながら進みます',
+          child: AppButton(
+            label: '一問一答で解く',
+            onPressed: questionNos.isEmpty
+                ? null
+                : () => onStart(QuizMode.drill, questionNos),
+          ),
         ),
         const SizedBox(height: 10),
         AppButton(
@@ -393,7 +405,7 @@ class _HistoryItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dateText = _formatDateTime(session.finishedAt);
-    final modeLabel = session.mode == QuizMode.review ? '復習' : '本番通し';
+    final label = modeLabel(session.mode);
     final score = session.score;
     final sectionTexts = score.bySection.entries
         .map((entry) {
@@ -412,7 +424,7 @@ class _HistoryItem extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '$dateText・$modeLabel',
+              '$dateText・$label',
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),

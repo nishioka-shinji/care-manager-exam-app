@@ -65,7 +65,7 @@ class HomeController extends ChangeNotifier {
       _examEntries = const [];
     }
 
-    _wrongNos = storageRepository.getWrongQuestionNos();
+    _wrongNos = storageRepository.getWrongQuestionNos(primaryExam?.id ?? '');
     _sessions = storageRepository.loadSessions();
 
     _loading = false;

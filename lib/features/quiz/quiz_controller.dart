@@ -48,6 +48,9 @@ class QuizController extends ChangeNotifier {
   bool _loadError = false;
   bool _submitted = false;
 
+  // 一問一答モードで答え合わせ済みの問番号。full/review では常に空のまま。
+  final Set<int> _revealed = {};
+
   // 設問ごとの選択状態。設問切替時のみ作り直し、選択トグルのハンドラは
   // 該当する ValueNotifier の値だけを更新する。
   final Map<int, ValueNotifier<Set<int>>> _selectionByNo = {};
@@ -134,6 +137,12 @@ class QuizController extends ChangeNotifier {
     }
     _current = current;
     _cursorIndex = current.cursor.clamp(0, current.questionNos.length - 1);
+    // full/review では revealed を持ち越さない（移植元 quiz.js:261-265 と同じ
+    // isDrill ガード）。clear() はガード外に置き、前回状態を必ず捨てる。
+    _revealed.clear();
+    if (current.mode == QuizMode.drill) {
+      _revealed.addAll(current.revealed);
+    }
     _loading = false;
     notifyListeners();
   }
@@ -144,14 +153,7 @@ class QuizController extends ChangeNotifier {
     if (current == null) return;
     if (index < 0 || index >= current.questionNos.length) return;
     _cursorIndex = index;
-    _current = CurrentSession(
-      examId: current.examId,
-      mode: current.mode,
-      startedAt: current.startedAt,
-      questionNos: current.questionNos,
-      cursor: index,
-      answers: current.answers,
-    );
+    _current = current.copyWith(cursor: index);
     await storageRepository.saveCurrent(_current!);
     notifyListeners();
   }
@@ -159,7 +161,10 @@ class QuizController extends ChangeNotifier {
   /// 選択トグル。ChoiceTile 内の ValueNotifier だけを更新し、
   /// notifyListeners は呼ばない（画面全体を作り直さないため）。
   /// selectCount 到達時は false を返し、呼び出し側でトーストを出す。
+  /// 一問一答モードで答え合わせ済みの問は選択を変更できない
+  /// （記録済みの正誤と画面の選択状態がずれるのを防ぐ。移植元 quiz.js:612-614）。
   bool toggleChoice(int no, int choiceNo, int selectCount) {
+    if (isRevealed(no)) return false;
     final selection = selectionOf(no);
     final next = Set<int>.from(selection.value);
     if (next.contains(choiceNo)) {
@@ -178,14 +183,7 @@ class QuizController extends ChangeNotifier {
     if (current == null) return;
     final answers = Map<int, List<int>>.from(current.answers);
     answers[no] = selected.toList()..sort();
-    _current = CurrentSession(
-      examId: current.examId,
-      mode: current.mode,
-      startedAt: current.startedAt,
-      questionNos: current.questionNos,
-      cursor: current.cursor,
-      answers: answers,
-    );
+    _current = current.copyWith(answers: answers);
     // UI をブロックしない fire-and-forget。中断復帰用の即時永続化。
     unawaited(storageRepository.saveCurrent(_current!));
   }
@@ -204,25 +202,78 @@ class QuizController extends ChangeNotifier {
     return ans != null && ans.isNotEmpty;
   }
 
+  /// 一問一答モードで答え合わせ済みかどうか。full/review では常に false。
+  /// 選択状態と分離した独立の購読単位にするため、画面側は選択トグルの
+  /// notifyListeners を経由せずこの値だけを見に来られる（不変条件2）。
+  bool isRevealed(int no) => _revealed.contains(no);
+
+  bool get isCurrentRevealed => isRevealed(currentNo);
+
+  /// 表示中の問を答え合わせする（一問一答モードのみ）。移植元 quiz.js:349-371。
+  /// 正誤の記録はここで1問ずつ行う。途中でやめてもホームの「間違えた問題を
+  /// 復習」に反映させるためで、終了時の gradeAndFinish では applyStats: false
+  /// を渡し二重計上しない。
+  ///
+  /// 選択数が selectCount に達していなければ false を返す（toggleChoice と
+  /// 同じパターン。トースト文言は画面側の責務）。答え合わせ済みなら何もせず
+  /// false を返す。成功したら true を返す。
+  Future<bool> revealCurrent(int selectCount) async {
+    if (mode != QuizMode.drill || isCurrentRevealed) return false;
+    final current = _current;
+    final question = currentQuestion;
+    if (current == null || question == null) return false;
+
+    final selection = selectionOf(currentNo).value;
+    if (selection.length != selectCount) return false;
+
+    final chosen = selection.toList()..sort();
+    _revealed.add(currentNo);
+
+    final answers = Map<int, List<int>>.from(current.answers);
+    answers[currentNo] = chosen;
+    _current = current.copyWith(
+      answers: answers,
+      revealed: _revealed.toList()..sort(),
+    );
+    await storageRepository.saveCurrent(_current!);
+    // read-modify-write のため await を外すと連続答え合わせで書き込みが
+    // 競合する。フェイク化しないと検出できないためテストは見送る（F4）。
+    await storageRepository.applyResults(current.examId, [
+      (no: currentNo, correct: isCorrect(chosen, question.answers)),
+    ]);
+
+    notifyListeners();
+    return true;
+  }
+
   /// 採点を確定する。二重採点防止のため既に確定済みなら何もしない。
   /// 戻り値は生成したセッション id。
-  Future<String?> gradeAndFinish() async {
+  ///
+  /// [questionNos] は採点対象（省略時は出題全件）。一問一答モードでは
+  /// 答え合わせ済みの問だけを渡す（[finishDrill] 参照）。[applyStats] は
+  /// 正誤を cme:stats に記録するか（既定 true）。一問一答モードは答え合わせの
+  /// たびに記録済みなので false を渡して二重計上を防ぐ（移植元 quiz.js:519-521）。
+  Future<String?> gradeAndFinish({
+    List<int>? questionNos,
+    bool applyStats = true,
+  }) async {
     if (_submitted) return null;
     _submitted = true;
 
     final exam = _exam;
     final current = _current;
     if (exam == null || current == null) return null;
+    final targetNos = questionNos ?? current.questionNos;
 
     // session.answers は questionNos 全件分のキーを持つ確定記録にする
     // （current.answers は触れた問だけのスパースな Map のため正規化する）。
     final fullAnswers = <int, List<int>>{
-      for (final no in current.questionNos) no: current.answers[no] ?? const [],
+      for (final no in targetNos) no: current.answers[no] ?? const [],
     };
 
     final result = gradeSession(
       exam,
-      questionNos: current.questionNos,
+      questionNos: targetNos,
       answers: fullAnswers,
     );
 
@@ -242,12 +293,32 @@ class QuizController extends ChangeNotifier {
     );
 
     await storageRepository.saveSession(session);
-    await storageRepository.applyResults([
-      for (final r in result.results) (no: r.no, correct: r.correct),
-    ]);
+    if (applyStats) {
+      await storageRepository.applyResults(current.examId, [
+        for (final r in result.results) (no: r.no, correct: r.correct),
+      ]);
+    }
     await storageRepository.clearCurrent();
 
     return id;
+  }
+
+  /// 一問一答モードを終了して結果画面へ進む（最後の問の「結果を見る」と、
+  /// 回答状況シートの「ここまでの結果を見る」の共通処理。移植元
+  /// quiz.js:563-575）。採点対象は答え合わせ済みの問だけ。
+  ///
+  /// [noRevealed] が true のときは「1問も答え合わせしていない」ため何もせず
+  /// [id] は null。呼び出し側はこれを「まず1問以上、答え合わせをしてください」
+  /// のトーストの合図にする。二重送信で [gradeAndFinish] が null を返した
+  /// 場合は [noRevealed] は false のまま [id] だけが null になり、
+  /// この2つを取り違えない（F5）。
+  Future<({String? id, bool noRevealed})> finishDrill() async {
+    final current = _current;
+    if (current == null) return (id: null, noRevealed: true);
+    final nos = current.questionNos.where(isRevealed).toList();
+    if (nos.isEmpty) return (id: null, noRevealed: true);
+    final id = await gradeAndFinish(questionNos: nos, applyStats: false);
+    return (id: id, noRevealed: false);
   }
 
   @override

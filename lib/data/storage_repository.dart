@@ -37,8 +37,12 @@ class StatsSummary {
 /// 移植元 `public/js/storage.js` の Dart 版（DOM 前提の localStorage 特有の
 /// メモリフォールバックは持たず、shared_preferences の初期化結果のみを見る）。
 class StorageRepository {
-  static const schemaVersion = 1;
+  static const schemaVersion = 2;
   static const maxSessions = 50;
+
+  /// 旧形式（v1）データを移行する先の年度。第28回のみを解いていた既存
+  /// ユーザー向け（移植元 storage.js の LEGACY_STATS_EXAM_ID と同じ）。
+  static const _legacyStatsExamId = '28';
 
   SharedPreferences? _prefs;
 
@@ -114,13 +118,62 @@ class StorageRepository {
     return _p.setString(key, jsonEncode(value));
   }
 
-  /// cme:v を検査し、schemaVersion と異なれば（未設定・破損・旧バージョン含む）
-  /// 書き直す。現時点では移行対象のスキーマ変更が無いため、バージョン番号を
-  /// 書き直すだけにとどめる。
+  /// 問番号（1..60 の整数文字列）として妥当なキーか。
+  bool _isQuestionNoKey(String key) {
+    final n = int.tryParse(key);
+    return n != null && n >= 1 && n <= 60 && n.toString() == key;
+  }
+
+  /// stats エントリ（{attempts,correct,lastCorrect,...}）の形をしているか。
+  /// 移植元 storage.js は `typeof === 'number'` で数値全般（2.0 等）を許すが、
+  /// Dart 側は自身が int しか書かないため int 限定にしている。
+  bool _isStatsEntry(dynamic value) {
+    if (!_isPlainMap(value)) return false;
+    final map = value as Map<String, dynamic>;
+    return map['attempts'] is int &&
+        map['correct'] is int &&
+        map['lastCorrect'] is bool;
+  }
+
+  /// cme:stats を v1（フラット）から v2（examId スコープ）へ移行する。
   ///
-  /// ここが将来のマイグレーション挿入点: 旧バージョン番号から schemaVersion への
-  /// 変換処理が必要になったら、書き直す前にこの関数内で sessions/stats/current
-  /// を変換する処理を挟む。
+  /// 判定はバージョン番号ではなく cme:stats の中身の形で行う（トップレベル
+  /// キーが問番号として妥当かつ値が stats エントリの形であれば旧形式と
+  /// 判断）。v2 の値は examId をキーに持つネストしたオブジェクトのため、
+  /// この形にはならず誤検知しない。判定できた旧形式キーだけ '28' バケットへ
+  /// 退避し、判定できない・壊れたキーはそのキーごと捨てる（既存の破損値
+  /// ハンドリング方針を踏襲）。旧形式が無ければ何もしない（冪等）。
+  /// 例外は外へ投げない（移行失敗でアプリが起動不能になるのを防ぐ）。
+  void _migrateStatsToExamScope() {
+    try {
+      final stats = _readJsonObject(StorageKeys.stats);
+      final hasLegacyEntry = stats.entries.any(
+        (e) => _isQuestionNoKey(e.key) && _isStatsEntry(e.value),
+      );
+      if (!hasLegacyEntry) return;
+
+      final legacyBucket = <String, dynamic>{};
+      for (final entry in stats.entries) {
+        if (_isQuestionNoKey(entry.key) && _isStatsEntry(entry.value)) {
+          legacyBucket[entry.key] = entry.value;
+        }
+        // 判定できない/壊れたキーはそのキーだけ捨てる。
+      }
+      _writeJson(StorageKeys.stats, {_legacyStatsExamId: legacyBucket});
+    } catch (_) {
+      // 移行に失敗しても致命的ではない（既存データが読めないだけ）。何もしない。
+    }
+  }
+
+  /// cme:v を検査し、schemaVersion と異なれば（未設定・破損・旧バージョン含む）
+  /// 移行処理を走らせたうえで書き直す。
+  ///
+  /// v1 → v2: cme:stats のスキーマ変更（年度スコープ化）に伴い
+  /// [_migrateStatsToExamScope] を呼ぶ。旧バージョン番号に関わらず cme:stats
+  /// の実際の中身の形で判定するため、version が読めない場合でも移行できる。
+  ///
+  /// ここが将来のマイグレーション挿入点: 次のスキーマ変更が必要になったら、
+  /// バージョン番号を書き直す前にこの関数内で変換処理を挟む。
   Future<void> ensureSchemaVersion() async {
     final raw = _p.getString(StorageKeys.version);
     int? version;
@@ -133,7 +186,7 @@ class StorageRepository {
       }
     }
     if (version != schemaVersion) {
-      // 現状は移行処理不要。バージョン番号を書き直すだけ。
+      _migrateStatsToExamScope();
       await _writeJson(StorageKeys.version, schemaVersion);
     }
   }
@@ -182,11 +235,14 @@ class StorageRepository {
     return _writeJson(StorageKeys.sessions, trimmed);
   }
 
-  /// エントリ単位で壊れている（Map でない）ものは読み飛ばし、フィールド
-  /// 欠落・型違いのエントリは [_questionStatFromJsonLoose] で補完して生かす。
-  Map<String, QuestionStat> loadStats() {
+  /// 指定年度 [examId] バケット内の問題ごとの正誤履歴。エントリ単位で
+  /// 壊れている（Map でない）ものは読み飛ばし、フィールド欠落・型違いの
+  /// エントリは [_questionStatFromJsonLoose] で補完して生かす。
+  Map<String, QuestionStat> loadStats(String examId) {
     final stats = <String, QuestionStat>{};
-    for (final entry in _readJsonObject(StorageKeys.stats).entries) {
+    final stored = _readJsonObject(StorageKeys.stats)[examId];
+    if (!_isPlainMap(stored)) return stats;
+    for (final entry in (stored as Map<String, dynamic>).entries) {
       if (!_isPlainMap(entry.value)) continue;
       stats[entry.key] = _questionStatFromJsonLoose(
         entry.value as Map<String, dynamic>,
@@ -195,17 +251,27 @@ class StorageRepository {
     return stats;
   }
 
-  /// 採点結果を受け、問題ごとの正誤履歴を更新する。
+  /// 採点結果を受け、[examId] でスコープした問題ごとの正誤履歴を更新する。
   ///   - attempts: 呼ばれるたびに +1
   ///   - correct: 正解なら +1
   ///   - lastCorrect / lastAt: 今回の値で上書き
   ///   - streak: 正解なら +1、不正解（未回答含む）なら 0 にリセット
-  Future<bool> applyResults(List<QuestionOutcome> results) async {
+  /// 同じ問番号でも examId が異なれば別レコードとして扱う（年度スコープ化）。
+  /// [examId] が空文字なら何も書かず false を返す。
+  Future<bool> applyResults(
+    String examId,
+    List<QuestionOutcome> results,
+  ) async {
+    if (examId.isEmpty) return false;
     final stats = _readJsonObject(StorageKeys.stats);
+    final bucketRaw = stats[examId];
+    final bucket = _isPlainMap(bucketRaw)
+        ? bucketRaw as Map<String, dynamic>
+        : <String, dynamic>{};
     final now = DateTime.now().toIso8601String();
     for (final r in results) {
       final key = r.no.toString();
-      final prevRaw = stats[key];
+      final prevRaw = bucket[key];
       final prev = _isPlainMap(prevRaw)
           ? _questionStatFromJsonLoose(prevRaw as Map<String, dynamic>)
           : const QuestionStat(
@@ -223,17 +289,23 @@ class StorageRepository {
         lastAt: now,
         streak: isCorrect ? prev.streak + 1 : 0,
       );
-      stats[key] = updated.toJson();
+      bucket[key] = updated.toJson();
     }
+    stats[examId] = bucket;
     return _writeJson(StorageKeys.stats, stats);
   }
 
-  /// 復習モードの出題対象。直近の解答が不正解だった（未回答も不正解扱い）問番号を
-  /// 昇順で返す。移植元 storage.js の `stats[key].lastCorrect === false` と同じ
-  /// 厳密比較にするため、[loadStats] の既定値フォールバックではなく生の値を見る。
-  List<int> getWrongQuestionNos() {
+  /// 復習モードの出題対象。指定年度 [examId] のうち、直近の解答が不正解
+  /// だった（未回答も不正解扱い）問番号を昇順で返す。移植元 storage.js の
+  /// `stats[key].lastCorrect === false` と同じ厳密比較にするため、
+  /// [loadStats] の既定値フォールバックではなく生の値を見る。
+  /// [examId] が空文字なら空配列を返す（誤って全年度を混ぜないため）。
+  List<int> getWrongQuestionNos(String examId) {
+    if (examId.isEmpty) return [];
     final nos = <int>[];
-    for (final entry in _readJsonObject(StorageKeys.stats).entries) {
+    final bucketRaw = _readJsonObject(StorageKeys.stats)[examId];
+    if (!_isPlainMap(bucketRaw)) return nos;
+    for (final entry in (bucketRaw as Map<String, dynamic>).entries) {
       if (!_isPlainMap(entry.value)) continue;
       final map = entry.value as Map<String, dynamic>;
       if (map['lastCorrect'] != false) continue;
@@ -244,12 +316,26 @@ class StorageRepository {
     return nos;
   }
 
-  /// 履歴画面のサマリ用集計。
+  /// 履歴画面のサマリ用集計。[examId] を省略した場合は全年度を合算した
+  /// 値を返す。指定した場合はその年度の記録のみに絞った集計を返す。
   ///   - tracked: 記録のある問題数
   ///   - everWrong: attempts - correct > 0 の件数（一度でも間違えた問題）
   ///   - streak2plus: streak >= 2 の件数（連続正解2回以上）
-  StatsSummary summarizeStats() {
-    final entries = loadStats().values;
+  StatsSummary summarizeStats({String? examId}) {
+    final stats = _readJsonObject(StorageKeys.stats);
+    final buckets = examId != null && examId.isNotEmpty
+        ? [
+            if (_isPlainMap(stats[examId]))
+              stats[examId] as Map<String, dynamic>,
+          ]
+        : stats.values.whereType<Map<String, dynamic>>().toList();
+    final entries = <QuestionStat>[];
+    for (final bucket in buckets) {
+      for (final value in bucket.values) {
+        if (!_isPlainMap(value)) continue;
+        entries.add(_questionStatFromJsonLoose(value as Map<String, dynamic>));
+      }
+    }
     final tracked = entries.length;
     final everWrong = entries.where((s) => s.attempts - s.correct > 0).length;
     final streak2plus = entries.where((s) => s.streak >= 2).length;
@@ -265,11 +351,15 @@ class StorageRepository {
     if (!_isPlainMap(value)) return false;
     final map = value as Map<String, dynamic>;
     return map['examId'] is String &&
-        (map['mode'] == 'full' || map['mode'] == 'review') &&
+        QuizMode.values.any((mode) => mode.name == map['mode']) &&
         map['startedAt'] is String &&
         map['questionNos'] is List &&
         map['cursor'] is int &&
-        _isPlainMap(map['answers']);
+        _isPlainMap(map['answers']) &&
+        // revealed は一問一答モードだけが使う任意フィールド。full/review の
+        // current には存在しないため、未設定も妥当な形として許す。要素型の
+        // 検査は fromJson 側（非整数要素の除去）に寄せる。
+        (map['revealed'] == null || map['revealed'] is List);
   }
 
   /// 中断中セッション。無ければ null。破損していればキーを削除して null を返す。

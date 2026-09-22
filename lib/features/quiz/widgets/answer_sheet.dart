@@ -181,10 +181,13 @@ CellStatus _cellStatusOf(QuizController controller, int no) {
   final answered = controller.isAnswered(no);
   if (controller.mode == QuizMode.drill && controller.isRevealed(no)) {
     List<int> answers = const [];
-    for (final q in controller.exam?.questions ?? const []) {
-      if (q.no == no) {
-        answers = q.answers;
-        break;
+    final questions = controller.exam?.questions;
+    if (questions != null) {
+      for (final q in questions) {
+        if (q.no == no) {
+          answers = q.answers;
+          break;
+        }
       }
     }
     final selected = controller.selectionOf(no).value.toList()..sort();

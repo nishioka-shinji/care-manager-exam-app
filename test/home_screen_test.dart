@@ -14,7 +14,7 @@ import 'package:care_manager_exam_app/theme/app_theme.dart';
 import 'package:care_manager_exam_app/widgets/app_button.dart';
 import 'package:care_manager_exam_app/widgets/app_card.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -484,6 +484,8 @@ void main() {
     await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('一問一答で解く'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('一問一答で解く'));
     await tester.pumpAndSettle();
 
@@ -880,6 +882,50 @@ void main() {
     expect(selectedOctoberCard.properties.button, isTrue);
     expect(selectedOctoberCard.properties.selected, isTrue);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('平成年号や実施月つきの年度タイトルがカード内に収まり切り詰められない', (tester) async {
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 600);
+    const titles = {
+      '14': '第14回（平成23年度）介護支援専門員 実務研修受講試験',
+      '2201': '第22回（令和元年度・10月実施）介護支援専門員 実務研修受講試験',
+    };
+    final exams = {
+      for (final entry in titles.entries)
+        entry.key: _buildExam(id: entry.key, title: entry.value),
+    };
+    final controller = await _buildController(
+      tester,
+      examRepository: _FakeExamRepository([
+        for (final exam in exams.values)
+          ExamMeta(
+            id: exam.id,
+            title: exam.title,
+            file: 'exam-${exam.id}.json',
+          ),
+      ], exams),
+    );
+
+    for (final scale in [1.0, 1.5, 2.0]) {
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      await tester.pumpWidget(_wrap(HomeScreen(controller: controller)));
+      await tester.pumpAndSettle();
+      for (final title in ['第14回（平成23年度）', '第22回（令和元年度・10月実施）']) {
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text(title),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse, reason: '$title @$scale');
+        expect(
+          paragraph.getMaxIntrinsicHeight(paragraph.size.width),
+          lessThanOrEqualTo(paragraph.size.height),
+          reason: '$title @$scale',
+        );
+      }
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('ストレージ利用不可のとき警告バナーが出る', (tester) async {

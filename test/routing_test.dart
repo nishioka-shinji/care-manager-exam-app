@@ -63,6 +63,15 @@ void main() {
     await _pumpAppLoaded(tester);
 
     expect(find.text('本番通し60問を解く'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byType(FooterCredit),
+      200,
+      scrollable: find.byWidgetPredicate(
+        (widget) =>
+            widget is Scrollable && widget.axisDirection == AxisDirection.down,
+      ),
+    );
+    await tester.pumpAndSettle();
     expect(find.textContaining('学校法人 藤仁館学園'), findsOneWidget);
 
     // 常時固定のオーバーレイではなく、ListView（本文）の中の通常フロー要素であり、

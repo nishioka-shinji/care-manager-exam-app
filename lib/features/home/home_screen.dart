@@ -82,11 +82,17 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   }
 
   Future<void> _startSession(QuizMode mode, List<int> questionNos) async {
-    if (_controller.current != null) {
+    final targetExam = _controller.selectedExam;
+    if (targetExam == null) return;
+    final current = _controller.current;
+    if (current != null) {
+      final currentTitle = _controller.examTitleOf(current.examId);
       final confirmed = await ConfirmSheet.show(
         context,
         title: '演習の上書き',
-        message: '中断中の演習があります。破棄して新しく始めますか？',
+        message:
+            '中断中の『$currentTitle』を破棄して'
+            '『${targetExam.title}』を始めますか？',
         confirmLabel: '破棄して新しく始める',
       );
       if (!confirmed) return;
@@ -130,7 +136,10 @@ class _HomeBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = controller.current;
-    final primaryExam = controller.primaryExam;
+    final selectedExam = controller.selectedExam;
+    final examsById = {
+      for (final entry in controller.examEntries) entry.exam.id: entry.exam,
+    };
 
     return Scaffold(
       appBar: AppBar(title: const Text('ケアマネ過去問')),
@@ -141,22 +150,31 @@ class _HomeBody extends StatelessWidget {
             if (!controller.storageAvailable) const _StorageWarningBanner(),
             if (!controller.storageAvailable) const SizedBox(height: 16),
             if (current != null)
-              _ResumeCard(current: current, onDiscard: onDiscardCurrent),
+              _ResumeCard(
+                current: current,
+                examTitle: controller.examTitleOf(current.examId),
+                onDiscard: onDiscardCurrent,
+              ),
             if (current != null) const SizedBox(height: 16),
             if (controller.loadError) const _LoadErrorNotice(),
-            for (final entry in controller.examEntries) ...[
-              _ExamCard(exam: entry.exam),
-              const SizedBox(height: 16),
-            ],
-            if (primaryExam != null) ...[
-              _StartButtons(
-                exam: primaryExam,
+            if (selectedExam != null) ...[
+              _ExamSelector(
+                entries: controller.examEntries,
+                selectedExamId: selectedExam.id,
+                onSelected: controller.selectExam,
+              ),
+              const SizedBox(height: 12),
+              _SelectedExamCard(
+                exam: selectedExam,
                 wrongNos: controller.wrongNos,
                 onStart: onStartSession,
               ),
               const SizedBox(height: 16),
             ],
-            _HistorySection(sessions: controller.sessions, exam: primaryExam),
+            _HistorySection(
+              sessions: controller.sessions,
+              examsById: examsById,
+            ),
             const FooterCredit(),
           ],
         ),
@@ -221,9 +239,14 @@ class _LoadErrorNotice extends StatelessWidget {
 
 /// 中断中セッションの再開カード。
 class _ResumeCard extends StatelessWidget {
-  const _ResumeCard({required this.current, required this.onDiscard});
+  const _ResumeCard({
+    required this.current,
+    required this.examTitle,
+    required this.onDiscard,
+  });
 
   final CurrentSession current;
+  final String examTitle;
   final VoidCallback onDiscard;
 
   @override
@@ -238,6 +261,8 @@ class _ResumeCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('前回の続きがあります', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(examTitle, style: theme.textTheme.bodySmall),
           const SizedBox(height: 8),
           Text(
             '$label・$cursorNo / $total 問目まで進行中',
@@ -261,35 +286,152 @@ class _ResumeCard extends StatelessWidget {
   }
 }
 
-/// 年度カード（タイトル・全問数・出典）。
-class _ExamCard extends StatelessWidget {
-  const _ExamCard({required this.exam});
+/// 複数年度を画面幅を増やさず選べる横スクロールのカード群。
+/// カードは全件をセマンティクスツリーに載せ、スクリーンリーダーでも
+/// 選択状態と問題数が分かるようにする。
+class _ExamSelector extends StatelessWidget {
+  const _ExamSelector({
+    required this.entries,
+    required this.selectedExamId,
+    required this.onSelected,
+  });
 
-  final Exam exam;
+  final List<ExamEntry> entries;
+  final String selectedExamId;
+  final ValueChanged<String> onSelected;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(exam.title, style: theme.textTheme.titleMedium),
-          const SizedBox(height: 6),
-          Text('全${exam.questions.length}問', style: theme.textTheme.bodySmall),
-          if (exam.source.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text('出典: $kExamSourceMediaName', style: theme.textTheme.bodySmall),
-          ],
-        ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('年度を選ぶ', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          key: const PageStorageKey<String>('home-exam-selector'),
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var index = 0; index < entries.length; index++) ...[
+                _ExamSelectionCard(
+                  exam: entries[index].exam,
+                  selected: entries[index].exam.id == selectedExamId,
+                  onTap: () => onSelected(entries[index].exam.id),
+                ),
+                if (index != entries.length - 1) const SizedBox(width: 8),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExamSelectionCard extends StatelessWidget {
+  const _ExamSelectionCard({
+    required this.exam,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Exam exam;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.appTokens;
+    final primary = theme.colorScheme.primary;
+    final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
+    return Semantics(
+      button: true,
+      selected: selected,
+      onTap: onTap,
+      label: '${exam.title}、全${exam.questions.length}問',
+      child: ExcludeSemantics(
+        child: Material(
+          color: selected
+              ? Color.alphaBlend(
+                  primary.withValues(alpha: 0.10),
+                  theme.colorScheme.surface,
+                )
+              : theme.colorScheme.surface,
+          shape: RoundedRectangleBorder(
+            side: BorderSide(
+              color: selected ? primary : tokens.border,
+              width: selected ? 2 : 1,
+            ),
+            borderRadius: BorderRadius.circular(tokens.radius),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              width: 184 * textScale,
+              height: 82 * textScale,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _compactExamTitle(exam.title),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          '全${exam.questions.length}問',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        const Spacer(),
+                        if (selected) ...[
+                          Icon(Icons.check_circle, size: 16, color: primary),
+                          const SizedBox(width: 3),
+                          Text(
+                            '選択中',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: primary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-/// 「本番通し60問を解く」「一問一答で解く」「間違えた問題を復習（n問）」の3ボタン。
-class _StartButtons extends StatelessWidget {
-  const _StartButtons({
+/// The source title repeats the app's common exam-name suffix. Removing that
+/// suffix keeps the meaningful year/round (including the October/March split
+/// for 2201/2202) visible at narrow widths and larger text scales.
+String _compactExamTitle(String title) {
+  final compact = title.replaceFirst(RegExp(r'\s*介護支援専門員\s+実務研修受講試験$'), '');
+  return compact.isEmpty ? title : compact;
+}
+
+/// 選択中の1年度だけに対し、本番通し・一問一答・復習を開始する。
+class _SelectedExamCard extends StatelessWidget {
+  const _SelectedExamCard({
     required this.exam,
     required this.wrongNos,
     required this.onStart,
@@ -304,52 +446,66 @@ class _StartButtons extends StatelessWidget {
     final theme = Theme.of(context);
     final questionNos = exam.questions.map((q) => q.no).toList()..sort();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AppButton(
-          label: '本番通し60問を解く',
-          variant: AppButtonVariant.primary,
-          onPressed: () => onStart(QuizMode.full, questionNos),
-        ),
-        const SizedBox(height: 10),
-        // 移植元は title 属性（ホバー）に説明を逃がす。可視テキストは
-        // 年度カードの縦の嵩を増やすため意図的に避けている（home.js:322-324）。
-        Semantics(
-          hint: '1問ごとに答え合わせをして、その場で解説を読みながら進みます',
-          child: AppButton(
-            label: '一問一答で解く',
+    return AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(exam.title, style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            '全${exam.questions.length}問'
+            '${exam.source.isEmpty ? '' : ' ・ 出典: $kExamSourceMediaName'}',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 10),
+          AppButton(
+            label: '本番通し${exam.questions.length}問を解く',
+            variant: AppButtonVariant.primary,
             onPressed: questionNos.isEmpty
                 ? null
-                : () => onStart(QuizMode.drill, questionNos),
+                : () => onStart(QuizMode.full, questionNos),
           ),
-        ),
-        const SizedBox(height: 10),
-        AppButton(
-          label: '間違えた問題を復習（${wrongNos.length}問）',
-          onPressed: wrongNos.isEmpty
-              ? null
-              : () => onStart(QuizMode.review, wrongNos),
-        ),
-        if (wrongNos.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              'まだ間違えた問題がありません。まずは本番通しを解いてください',
-              style: theme.textTheme.bodySmall,
+          const SizedBox(height: 8),
+          Semantics(
+            hint: '1問ごとに答え合わせをして、その場で解説を読みながら進みます',
+            child: AppButton(
+              label: '一問一答で解く',
+              onPressed: questionNos.isEmpty
+                  ? null
+                  : () => onStart(QuizMode.drill, questionNos),
             ),
           ),
-      ],
+          const SizedBox(height: 8),
+          Semantics(
+            hint: wrongNos.isEmpty ? 'まだ間違えた問題がありません。まずは本番通しを解いてください' : null,
+            child: AppButton(
+              label: '間違えた問題を復習（${wrongNos.length}問）',
+              onPressed: wrongNos.isEmpty
+                  ? null
+                  : () => onStart(QuizMode.review, wrongNos),
+            ),
+          ),
+          if (wrongNos.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'まだ間違えた問題がありません。まずは本番通しを解いてください',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
 
 /// 直近の受験履歴3件 + 「履歴をすべて見る」。
 class _HistorySection extends StatelessWidget {
-  const _HistorySection({required this.sessions, required this.exam});
+  const _HistorySection({required this.sessions, required this.examsById});
 
   final List<Session> sessions;
-  final Exam? exam;
+  final Map<String, Exam> examsById;
 
   @override
   Widget build(BuildContext context) {
@@ -366,7 +522,7 @@ class _HistorySection extends StatelessWidget {
             Text('まだ受験履歴がありません。', style: theme.textTheme.bodyMedium)
           else
             for (final session in recent)
-              _HistoryItem(session: session, exam: exam),
+              _HistoryItem(session: session, exam: examsById[session.examId]),
           const SizedBox(height: 10),
           AppButton(
             label: '履歴をすべて見る',
@@ -406,6 +562,7 @@ class _HistoryItem extends StatelessWidget {
     final theme = Theme.of(context);
     final dateText = _formatDateTime(session.finishedAt);
     final label = modeLabel(session.mode);
+    final examTitle = exam?.title ?? '第${session.examId}回';
     final score = session.score;
     final sectionTexts = score.bySection.entries
         .map((entry) {
@@ -429,6 +586,8 @@ class _HistoryItem extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            const SizedBox(height: 2),
+            Text(examTitle, style: theme.textTheme.bodySmall),
             Text(
               '${score.total} / ${score.max}',
               style: theme.textTheme.titleMedium,

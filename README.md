@@ -5,7 +5,8 @@ Web 版 `care-manager-exam`（素の HTML/CSS/JavaScript）のデザインと挙
 Flutter（Dart）で作り直したもの。**コードは Web 版と一切共有していない**
 （WebView でラップしたものではない）。
 
-令和7年度（第28回）全60問を対象に、本番通し演習・完全一致方式の採点・分野別得点表示・
+第14回〜第28回（第22回は10月実施・3月実施の2回）の全16試験・960問を対象に、
+年度を選んで本番通し演習・一問一答・完全一致方式の採点・分野別得点表示・
 間違えた問題だけの復習・受験履歴の記録ができる。
 
 ## セットアップ
@@ -34,7 +35,8 @@ mise exec -- flutter pub get
 
 問題・解説データは `assets/data/exam-*.json` に含まれる `source` / `credit` を参照。
 
-- 出典: [ケアマネージャー試験過去問題集](https://www.care-news.jp/kakomon/28/all_test.html)
+- 出典: [ケアマネージャー試験過去問題集（第28回）](https://www.care-news.jp/kakomon/28/all_test.html)
+  （各試験の URL は JSON の `source` に収録）
 - 解答・解説: 学校法人 藤仁館学園
 
 試験問題そのものは公的試験の問題だが、**解説文は学校法人 藤仁館学園の著作物**である。

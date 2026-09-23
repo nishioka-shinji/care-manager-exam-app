@@ -26,13 +26,14 @@ void main() {
   /// 実時間のイベントループに載せながらスピナー消失を待つ
   /// （routing_test.dart の _pumpAppLoaded と同じ理由・同じ実装）。
   Future<void> pumpUntilLoaded(WidgetTester tester) async {
-    for (var i = 0; i < 20; i++) {
+    for (var i = 0; i < 100; i++) {
       await tester.pump();
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
       if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
     }
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     await tester.pumpAndSettle();
   }
 
@@ -46,7 +47,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
       await tester.pump();
     });
-    await tester.pumpAndSettle();
+    await pumpUntilLoaded(tester);
   }
 
   /// ホーム/履歴の得点表示（'{total} / {max}' 形式）にマッチするテキストを

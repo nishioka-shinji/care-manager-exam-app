@@ -26,7 +26,8 @@ class HomeController extends ChangeNotifier {
   bool _loadError = false;
   CurrentSession? _current;
   List<ExamEntry> _examEntries = const [];
-  List<int> _wrongNos = const [];
+  String? _selectedExamId;
+  Map<String, List<int>> _wrongNosByExamId = const {};
   List<Session> _sessions = const [];
 
   bool get loading => _loading;
@@ -40,11 +41,32 @@ class HomeController extends ChangeNotifier {
   List<ExamEntry> get examEntries => _examEntries;
 
   /// 開始ボタンが作用する年度（index.json の先頭）。無ければ null。
+  ///
+  /// 旧テストと呼び出し側の互換用に残す。実際の開始対象は
+  /// [selectedExam] であり、初期選択だけが先頭（最新）年度になる。
   Exam? get primaryExam =>
       _examEntries.isEmpty ? null : _examEntries.first.exam;
 
-  List<int> get wrongNos => _wrongNos;
+  String? get selectedExamId => _selectedExamId;
+
+  Exam? get selectedExam {
+    final selectedId = _selectedExamId;
+    if (selectedId == null) return null;
+    return examById(selectedId);
+  }
+
+  List<int> get wrongNos => _wrongNosByExamId[_selectedExamId] ?? const [];
+
   List<Session> get sessions => _sessions;
+
+  Exam? examById(String examId) {
+    for (final entry in _examEntries) {
+      if (entry.exam.id == examId) return entry.exam;
+    }
+    return null;
+  }
+
+  String examTitleOf(String examId) => examById(examId)?.title ?? '第$examId回';
 
   Future<void> load() async {
     if (!storageRepository.isAvailable()) {
@@ -60,15 +82,32 @@ class HomeController extends ChangeNotifier {
         entries.add((meta: meta, exam: await examRepository.loadExam(meta.id)));
       }
       _examEntries = entries;
+      _loadError = false;
     } catch (_) {
       _loadError = true;
       _examEntries = const [];
     }
 
-    _wrongNos = storageRepository.getWrongQuestionNos(primaryExam?.id ?? '');
+    // didPopNext による再ロードでも選択中の年度を保つ。削除された
+    // 年度だけは index 先頭（最新）へ安全にフォールバックする。
+    if (!_examEntries.any((entry) => entry.exam.id == _selectedExamId)) {
+      _selectedExamId = primaryExam?.id;
+    }
+
+    _wrongNosByExamId = {
+      for (final entry in _examEntries)
+        entry.exam.id: storageRepository.getWrongQuestionNos(entry.exam.id),
+    };
     _sessions = storageRepository.loadSessions();
 
     _loading = false;
+    notifyListeners();
+  }
+
+  /// 開始・復習の対象年度を切り替える。
+  void selectExam(String examId) {
+    if (examId == _selectedExamId || examById(examId) == null) return;
+    _selectedExamId = examId;
     notifyListeners();
   }
 
@@ -82,7 +121,7 @@ class HomeController extends ChangeNotifier {
   /// 全問番号（本番通し）または[nos]（復習）で新しい中断セッションを作る。
   /// 呼び出し前の上書き確認は画面側（[ConfirmSheet]）の責務とする。
   Future<void> startSession(QuizMode mode, List<int> questionNos) async {
-    final exam = primaryExam;
+    final exam = selectedExam;
     if (exam == null) return;
     final next = CurrentSession(
       examId: exam.id,

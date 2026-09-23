@@ -345,7 +345,19 @@ class _ExamSelectionCard extends StatelessWidget {
     final theme = Theme.of(context);
     final tokens = context.appTokens;
     final primary = theme.colorScheme.primary;
-    final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
+    final textScaler = MediaQuery.textScalerOf(context)
+        .clamp(minScaleFactor: 1.0, maxScaleFactor: 1.5);
+    final textScale = textScaler.scale(1);
+    final titleStyle = theme.textTheme.bodyMedium!.copyWith(
+      fontWeight: FontWeight.w700,
+      height: 1.35,
+    );
+    final metaStyle = theme.textTheme.bodySmall!.copyWith(height: 1.4);
+    // 平成表記は2行になるため、高さを固定したまま2行分と下段1行分を確保する。
+    double lineHeight(TextStyle style) =>
+        (textScaler.scale(style.fontSize!) * style.height!).ceilToDouble();
+    final cardHeight =
+        20 + lineHeight(titleStyle) * 2 + 4 + lineHeight(metaStyle);
     return Semantics(
       button: true,
       selected: selected,
@@ -371,7 +383,7 @@ class _ExamSelectionCard extends StatelessWidget {
             onTap: onTap,
             child: SizedBox(
               width: 184 * textScale,
-              height: 82 * textScale,
+              height: cardHeight,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -383,18 +395,19 @@ class _ExamSelectionCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         _compactExamTitle(exam.title),
-                        maxLines: 3,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                        textScaler: textScaler,
+                        style: titleStyle,
                       ),
                     ),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Text(
                           '全${exam.questions.length}問',
-                          style: theme.textTheme.bodySmall,
+                          textScaler: textScaler,
+                          style: metaStyle,
                         ),
                         const Spacer(),
                         if (selected) ...[
@@ -402,7 +415,8 @@ class _ExamSelectionCard extends StatelessWidget {
                           const SizedBox(width: 3),
                           Text(
                             '選択中',
-                            style: theme.textTheme.bodySmall?.copyWith(
+                            textScaler: textScaler,
+                            style: metaStyle.copyWith(
                               color: primary,
                               fontWeight: FontWeight.w700,
                             ),

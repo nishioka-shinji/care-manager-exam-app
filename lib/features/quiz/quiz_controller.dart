@@ -9,6 +9,7 @@ import '../../core/models/session.dart';
 import '../../core/scoring.dart';
 import '../../data/exam_repository.dart';
 import '../../data/storage_repository.dart';
+import '../../notifications/study_reminder.dart';
 
 /// 2 桁ゼロ埋め。移植元 quiz.js の pad() と同じ。
 String _pad(int n) => n.toString().padLeft(2, '0');
@@ -35,10 +36,14 @@ class QuizController extends ChangeNotifier {
   QuizController({
     required this.examRepository,
     required this.storageRepository,
+    this.studyReminder,
   });
 
   final ExamRepository examRepository;
   final StorageRepository storageRepository;
+
+  /// 解答時に最終学習時刻を記録する先。null なら記録しない（テスト既定）。
+  final StudyReminderService? studyReminder;
 
   Exam? _exam;
   CurrentSession? _current;
@@ -186,6 +191,8 @@ class QuizController extends ChangeNotifier {
     _current = current.copyWith(answers: answers);
     // UI をブロックしない fire-and-forget。中断復帰用の即時永続化。
     unawaited(storageRepository.saveCurrent(_current!));
+    // notifyListeners を伴わないので設問は作り直さない（不変条件2）。
+    unawaited(studyReminder?.recordStudy());
   }
 
   int get unansweredCount {

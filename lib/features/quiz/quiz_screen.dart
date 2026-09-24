@@ -6,6 +6,7 @@ import '../../core/models/session.dart';
 import '../../core/scoring.dart';
 import '../../data/exam_repository.dart';
 import '../../data/storage_repository.dart';
+import '../../notifications/study_reminder.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/app_badge.dart';
 import '../../widgets/app_button.dart';
@@ -56,6 +57,7 @@ class _QuizScreenState extends State<QuizScreen> {
         QuizController(
           examRepository: ExamRepository(),
           storageRepository: StorageRepository(),
+          studyReminder: appStudyReminder,
         );
     // 画面構造が変わるときだけ setState する自前フィルタ（クラス doc 参照）。
     _controller.addListener(_onControllerChanged);

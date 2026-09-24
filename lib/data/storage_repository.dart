@@ -18,6 +18,8 @@ class StorageKeys {
   static const sessions = 'cme:sessions';
   static const stats = 'cme:stats';
   static const current = 'cme:current';
+  static const lastStudyAt = 'cme:lastStudyAt';
+  static const firstLaunchAt = 'cme:firstLaunchAt';
 }
 
 /// stats の要約集計。履歴画面で使う3指標。
@@ -395,7 +397,28 @@ class StorageRepository {
     return _p.remove(StorageKeys.current);
   }
 
-  /// cme: 系キーを全削除し、スキーマバージョンを書き直す。
+  DateTime? _readDateTime(String key) {
+    final raw = _p.getString(key);
+    return raw == null ? null : DateTime.tryParse(raw);
+  }
+
+  /// 最後に1問でも解答した時刻。学習リマインドの基準に使う。
+  DateTime? loadLastStudyAt() => _readDateTime(StorageKeys.lastStudyAt);
+
+  Future<bool> saveLastStudyAt(DateTime at) {
+    return _p.setString(StorageKeys.lastStudyAt, at.toIso8601String());
+  }
+
+  /// 初回起動時刻。未設定（または破損）のときだけ [now] を書き、確定値を返す。
+  Future<DateTime> ensureFirstLaunchAt(DateTime now) async {
+    final saved = _readDateTime(StorageKeys.firstLaunchAt);
+    if (saved != null) return saved;
+    await _p.setString(StorageKeys.firstLaunchAt, now.toIso8601String());
+    return now;
+  }
+
+  /// 学習記録系の cme: キーを全削除し、スキーマバージョンを書き直す。
+  /// リマインド基準（lastStudyAt / firstLaunchAt）は通知の間隔を保つため残す。
   Future<bool> clearAll() async {
     final results = await Future.wait([
       _p.remove(StorageKeys.version),

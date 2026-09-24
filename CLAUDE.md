@@ -31,11 +31,13 @@ macOS で動作確認済みと報告しないこと。
    移植元も判定を持たない。結果画面の 70% は参考ラインの描画のみ。
 2. **演習画面の選択肢タップで設問ウィジェットを作り直さない。** スクロール位置が飛ぶ。
    選択状態だけを購読する単位に `setState` の範囲を絞る。設問切替時のみ作り直して先頭へ戻す。
-3. **永続化キーは `cme:` プレフィックス。** `cme:v` / `cme:sessions` / `cme:stats` / `cme:current`。
+3. **永続化キーは `cme:` プレフィックス。** `cme:v` / `cme:sessions` / `cme:stats` / `cme:current` / `cme:lastStudyAt` / `cme:firstLaunchAt`。
 
 ## 依存方針
 
-依存は `shared_preferences` のみ。状態管理は `ChangeNotifier`、ルーティングは素の `Navigator` で足りる。
+依存は `shared_preferences` と、学習リマインド通知用の `flutter_local_notifications` / `timezone` のみ。
+通知系 2 つは Android の予約通知のためだけに許可したもので、他の用途には広げない。
+状態管理は `ChangeNotifier`、ルーティングは素の `Navigator` で足りる。
 go_router / provider / riverpod / コード生成系は追加しない。
 出典クレジットはテキスト表示のみとし、外部ブラウザ起動（url_launcher）は行わない。
 
